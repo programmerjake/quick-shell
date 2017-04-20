@@ -121,6 +121,37 @@ std::pair<std::shared_ptr<const char32_t>, std::size_t> Parser::makeSource(const
     return makeSource(std::move(retval));
 }
 
+void Parser::parseUnimplemented()
+{
+    RuleResult result;
+    internalParseUnimplemented(0, result, true);
+    assert(!result.empty());
+    if(result.fail())
+        throw ParseError(errorLocation, errorMessage);
+}
+
+void Parser::internalParseUnimplemented(std::size_t startLocation__, RuleResult &ruleResultOut__, bool isRequiredForSuccess__)
+{
+    auto &ruleResult__ = this->getResults(startLocation__).resultUnimplemented;
+    if(!ruleResult__.empty() && (ruleResult__.fail() || !isRequiredForSuccess__))
+    {
+        ruleResultOut__ = ruleResult__;
+        return;
+    }
+    {
+        const char *predicateReturnValue__ = nullptr;
+        {
+#line 32 "parser.peg"
+                  (predicateReturnValue__) = "unimplemented";
+#line 147 "parser.cpp"
+        }
+        ruleResult__ = this->makeSuccess(startLocation__);
+        if(predicateReturnValue__ != nullptr)
+            ruleResult__ = this->makeFail(startLocation__, predicateReturnValue__, isRequiredForSuccess__);
+    }
+    ruleResultOut__ = ruleResult__;
+}
+
 std::string Parser::parseNewLine()
 {
     RuleResult result;
@@ -176,9 +207,9 @@ std::string Parser::internalParseNewLine(std::size_t startLocation__, RuleResult
         auto savedStartLocation__ = startLocation__;
         startLocation__ = ruleResult__.location;
         {
-#line 32 "parser.peg"
+#line 34 "parser.peg"
                          (returnValue__) = "\r\n";
-#line 182 "parser.cpp"
+#line 213 "parser.cpp"
         }
         ruleResult__ = this->makeSuccess(startLocation__);
         startLocation__ = savedStartLocation__;
@@ -216,9 +247,9 @@ std::string Parser::internalParseNewLine(std::size_t startLocation__, RuleResult
             auto savedStartLocation__ = startLocation__;
             startLocation__ = ruleResult__.location;
             {
-#line 33 "parser.peg"
+#line 35 "parser.peg"
                             (returnValue__) += ch;
-#line 222 "parser.cpp"
+#line 253 "parser.cpp"
             }
             ruleResult__ = this->makeSuccess(startLocation__);
             startLocation__ = savedStartLocation__;
@@ -279,13 +310,13 @@ char32_t Parser::internalParseIfsChar(std::size_t startLocation__, RuleResult &r
         {
             const char *predicateReturnValue__ = nullptr;
             {
-#line 36 "parser.peg"
+#line 38 "parser.peg"
       
         if(ifsValue.find(value) == std::u32string::npos)
             (predicateReturnValue__) = "not an IFS character";
         (returnValue__) = value;
     
-#line 289 "parser.cpp"
+#line 320 "parser.cpp"
             }
             ruleResult__ = this->makeSuccess(startLocation__);
             if(predicateReturnValue__ != nullptr)
@@ -295,6 +326,244 @@ char32_t Parser::internalParseIfsChar(std::size_t startLocation__, RuleResult &r
     }
     ruleResultOut__ = ruleResult__;
     return returnValue__;
+}
+
+std::string Parser::parseIfsCharSequence()
+{
+    RuleResult result;
+    auto retval = internalParseIfsCharSequence(0, result, true);
+    assert(!result.empty());
+    if(result.fail())
+        throw ParseError(errorLocation, errorMessage);
+    return retval;
+}
+
+std::string Parser::internalParseIfsCharSequence(std::size_t startLocation__, RuleResult &ruleResultOut__, bool isRequiredForSuccess__)
+{
+    std::string returnValue__{};
+    char32_t ch{};
+    auto &ruleResult__ = this->getResults(startLocation__).resultIfsCharSequence;
+    if(!ruleResult__.empty() && (ruleResult__.fail() || !isRequiredForSuccess__))
+    {
+        ruleResultOut__ = ruleResult__;
+        return returnValue__;
+    }
+    ruleResult__ = Parser::RuleResult();
+    ch = this->internalParseIfsChar(startLocation__, ruleResult__, isRequiredForSuccess__);
+    assert(!ruleResult__.empty());
+    if(ruleResult__.success())
+    {
+        auto savedStartLocation__ = startLocation__;
+        startLocation__ = ruleResult__.location;
+        {
+#line 44 "parser.peg"
+                                      (returnValue__) += ch;
+#line 362 "parser.cpp"
+        }
+        ruleResult__ = this->makeSuccess(startLocation__);
+        startLocation__ = savedStartLocation__;
+    }
+    if(ruleResult__.success())
+    {
+        auto savedStartLocation__ = startLocation__;
+        auto &savedRuleResult__ = ruleResult__;
+        while(true)
+        {
+            Parser::RuleResult ruleResult__;
+            startLocation__ = savedRuleResult__.location;
+            ruleResult__ = Parser::RuleResult();
+            ch = this->internalParseIfsChar(startLocation__, ruleResult__, isRequiredForSuccess__);
+            assert(!ruleResult__.empty());
+            if(ruleResult__.success())
+            {
+                auto savedStartLocation__ = startLocation__;
+                startLocation__ = ruleResult__.location;
+                {
+#line 44 "parser.peg"
+                                      (returnValue__) += ch;
+#line 385 "parser.cpp"
+                }
+                ruleResult__ = this->makeSuccess(startLocation__);
+                startLocation__ = savedStartLocation__;
+            }
+            if(ruleResult__.fail() || ruleResult__.location == startLocation__)
+            {
+                savedRuleResult__ = this->makeSuccess(savedRuleResult__.location, ruleResult__.endLocation);
+                startLocation__ = savedStartLocation__;
+                break;
+            }
+            savedRuleResult__ = this->makeSuccess(ruleResult__.location, ruleResult__.endLocation);
+        }
+    }
+    ruleResultOut__ = ruleResult__;
+    return returnValue__;
+}
+
+void Parser::parseVariableAssignment()
+{
+    RuleResult result;
+    internalParseVariableAssignment(0, result, true);
+    assert(!result.empty());
+    if(result.fail())
+        throw ParseError(errorLocation, errorMessage);
+}
+
+void Parser::internalParseVariableAssignment(std::size_t startLocation__, RuleResult &ruleResultOut__, bool isRequiredForSuccess__)
+{
+    Parser::RuleResult ruleResult__;
+    ruleResult__ = Parser::RuleResult();
+    this->internalParseUnimplemented(startLocation__, ruleResult__, isRequiredForSuccess__);
+    assert(!ruleResult__.empty());
+    ruleResultOut__ = ruleResult__;
+}
+
+void Parser::parseWord()
+{
+    RuleResult result;
+    internalParseWord(0, result, true);
+    assert(!result.empty());
+    if(result.fail())
+        throw ParseError(errorLocation, errorMessage);
+}
+
+void Parser::internalParseWord(std::size_t startLocation__, RuleResult &ruleResultOut__, bool isRequiredForSuccess__)
+{
+    Parser::RuleResult ruleResult__;
+    ruleResult__ = Parser::RuleResult();
+    this->internalParseUnimplemented(startLocation__, ruleResult__, isRequiredForSuccess__);
+    assert(!ruleResult__.empty());
+    ruleResultOut__ = ruleResult__;
+}
+
+void Parser::parseControlOperator()
+{
+    RuleResult result;
+    internalParseControlOperator(0, result, true);
+    assert(!result.empty());
+    if(result.fail())
+        throw ParseError(errorLocation, errorMessage);
+}
+
+void Parser::internalParseControlOperator(std::size_t startLocation__, RuleResult &ruleResultOut__, bool isRequiredForSuccess__)
+{
+    Parser::RuleResult ruleResult__;
+    ruleResult__ = Parser::RuleResult();
+    this->internalParseUnimplemented(startLocation__, ruleResult__, isRequiredForSuccess__);
+    assert(!ruleResult__.empty());
+    ruleResultOut__ = ruleResult__;
+}
+
+void Parser::parseSimpleCommand()
+{
+    RuleResult result;
+    internalParseSimpleCommand(0, result, true);
+    assert(!result.empty());
+    if(result.fail())
+        throw ParseError(errorLocation, errorMessage);
+}
+
+void Parser::internalParseSimpleCommand(std::size_t startLocation__, RuleResult &ruleResultOut__, bool isRequiredForSuccess__)
+{
+    auto &ruleResult__ = this->getResults(startLocation__).resultSimpleCommand;
+    if(!ruleResult__.empty() && (ruleResult__.fail() || !isRequiredForSuccess__))
+    {
+        ruleResultOut__ = ruleResult__;
+        return;
+    }
+    ruleResult__ = this->makeSuccess(startLocation__);
+    {
+        auto savedStartLocation__ = startLocation__;
+        auto &savedRuleResult__ = ruleResult__;
+        while(true)
+        {
+            Parser::RuleResult ruleResult__;
+            startLocation__ = savedRuleResult__.location;
+            ruleResult__ = Parser::RuleResult();
+            this->internalParseVariableAssignment(startLocation__, ruleResult__, isRequiredForSuccess__);
+            assert(!ruleResult__.empty());
+            if(ruleResult__.success())
+            {
+                auto savedStartLocation__ = startLocation__;
+                startLocation__ = ruleResult__.location;
+                ruleResult__ = Parser::RuleResult();
+                this->internalParseIfsCharSequence(startLocation__, ruleResult__, isRequiredForSuccess__);
+                assert(!ruleResult__.empty());
+                startLocation__ = savedStartLocation__;
+            }
+            if(ruleResult__.fail() || ruleResult__.location == startLocation__)
+            {
+                savedRuleResult__ = this->makeSuccess(savedRuleResult__.location, ruleResult__.endLocation);
+                startLocation__ = savedStartLocation__;
+                break;
+            }
+            savedRuleResult__ = this->makeSuccess(ruleResult__.location, ruleResult__.endLocation);
+        }
+    }
+    if(ruleResult__.success())
+    {
+        auto savedStartLocation__ = startLocation__;
+        startLocation__ = ruleResult__.location;
+        ruleResult__ = Parser::RuleResult();
+        this->internalParseWord(startLocation__, ruleResult__, isRequiredForSuccess__);
+        assert(!ruleResult__.empty());
+        startLocation__ = savedStartLocation__;
+    }
+    if(ruleResult__.success())
+    {
+        auto savedStartLocation__ = startLocation__;
+        startLocation__ = ruleResult__.location;
+        ruleResult__ = this->makeSuccess(startLocation__);
+        {
+            auto savedStartLocation__ = startLocation__;
+            auto &savedRuleResult__ = ruleResult__;
+            while(true)
+            {
+                Parser::RuleResult ruleResult__;
+                startLocation__ = savedRuleResult__.location;
+                ruleResult__ = Parser::RuleResult();
+                this->internalParseIfsCharSequence(startLocation__, ruleResult__, isRequiredForSuccess__);
+                assert(!ruleResult__.empty());
+                if(ruleResult__.success())
+                {
+                    auto savedStartLocation__ = startLocation__;
+                    startLocation__ = ruleResult__.location;
+                    ruleResult__ = Parser::RuleResult();
+                    this->internalParseWord(startLocation__, ruleResult__, isRequiredForSuccess__);
+                    assert(!ruleResult__.empty());
+                    startLocation__ = savedStartLocation__;
+                }
+                if(ruleResult__.fail() || ruleResult__.location == startLocation__)
+                {
+                    savedRuleResult__ = this->makeSuccess(savedRuleResult__.location, ruleResult__.endLocation);
+                    startLocation__ = savedStartLocation__;
+                    break;
+                }
+                savedRuleResult__ = this->makeSuccess(ruleResult__.location, ruleResult__.endLocation);
+            }
+        }
+        startLocation__ = savedStartLocation__;
+    }
+    if(ruleResult__.success())
+    {
+        auto savedStartLocation__ = startLocation__;
+        startLocation__ = ruleResult__.location;
+        ruleResult__ = Parser::RuleResult();
+        this->internalParseIfsCharSequence(startLocation__, ruleResult__, isRequiredForSuccess__);
+        assert(!ruleResult__.empty());
+        if(ruleResult__.fail())
+            ruleResult__ = this->makeSuccess(startLocation__);
+        startLocation__ = savedStartLocation__;
+    }
+    if(ruleResult__.success())
+    {
+        auto savedStartLocation__ = startLocation__;
+        startLocation__ = ruleResult__.location;
+        ruleResult__ = Parser::RuleResult();
+        this->internalParseControlOperator(startLocation__, ruleResult__, isRequiredForSuccess__);
+        assert(!ruleResult__.empty());
+        startLocation__ = savedStartLocation__;
+    }
+    ruleResultOut__ = ruleResult__;
 }
 }
 }

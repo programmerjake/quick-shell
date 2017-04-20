@@ -83,8 +83,11 @@ private:
     };
     struct Results final
     {
+        RuleResult resultUnimplemented;
         RuleResult resultNewLine;
         RuleResult resultIfsChar;
+        RuleResult resultIfsCharSequence;
+        RuleResult resultSimpleCommand;
     };
     struct ResultsChunk final
     {
@@ -184,12 +187,24 @@ public:
     }
 
 public:
+    void parseUnimplemented();
     std::string parseNewLine();
     char32_t parseIfsChar();
+    std::string parseIfsCharSequence();
+    void parseVariableAssignment();
+    void parseWord();
+    void parseControlOperator();
+    void parseSimpleCommand();
 
 private:
+    void internalParseUnimplemented(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
     std::string internalParseNewLine(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
     char32_t internalParseIfsChar(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
+    std::string internalParseIfsCharSequence(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
+    void internalParseVariableAssignment(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
+    void internalParseWord(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
+    void internalParseControlOperator(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
+    void internalParseSimpleCommand(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
 };
 }
 }

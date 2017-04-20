@@ -27,10 +27,11 @@ public:
     std::u32string ifsValue;
 }
 
+#error finish
+
 typedef std::string string;
 
-newLine:string = "\r\n" {$$ = "\r\n";}
-               / [\r\n]:ch {$$ += ch;};
+unimplemented = &{$? = "unimplemented";};
 
 ifsChar:char = [^]:value
     &{
@@ -38,3 +39,78 @@ ifsChar:char = [^]:value
             $? = "not an IFS character";
         $$ = value;
     };
+
+blank = [ \t];
+
+blankSequence:string = (blank:ch {$$ += ch;})+;
+
+ifsCharSequence:string = (ifsChar:ch {$$ += ch;})+;
+
+variableAssignment = unimplemented;
+
+metacharacter = [|&;()<> \t\n];
+
+metacharacterOrEOF = metacharacter / EOF;
+
+word = unimplemented;
+
+exMarkWord = "!" &metacharacterOrEOF;
+lbraceWord = "{" &metacharacterOrEOF;
+rbraceWord = "}" &metacharacterOrEOF;
+doubleLBracketWord = "[[" &metacharacterOrEOF;
+doubleRBracketWord = "]]" &metacharacterOrEOF;
+
+caseWord = "case" &metacharacterOrEOF;
+coprocWord = "coproc" &metacharacterOrEOF;
+doWord = "do" &metacharacterOrEOF;
+doneWord = "done" &metacharacterOrEOF;
+elifWord = "elif" &metacharacterOrEOF;
+elseWord = "else" &metacharacterOrEOF;
+esacWord = "esac" &metacharacterOrEOF;
+fiWord = "fi" &metacharacterOrEOF;
+forWord = "for" &metacharacterOrEOF;
+functionWord = "function" &metacharacterOrEOF;
+ifWord = "if" &metacharacterOrEOF;
+inWord = "in" &metacharacterOrEOF;
+selectWord = "select" &metacharacterOrEOF;
+timeWord = "time" &metacharacterOrEOF;
+thenWord = "then" &metacharacterOrEOF;
+untilWord = "until" &metacharacterOrEOF;
+whileWord = "while" &metacharacterOrEOF;
+
+reservedWord = exMarkWord
+             / lbraceWord
+             / rbraceWord
+             / doubleLBracketWord
+             / doubleRBracketWord
+             / caseWord
+             / coprocWord
+             / doWord
+             / doneWord
+             / elifWord
+             / elseWord
+             / esacWord
+             / fiWord
+             / forWord
+             / functionWord
+             / ifWord
+             / inWord
+             / selectWord
+             / timeWord
+             / thenWord
+             / untilWord
+             / whileWord;
+
+controlOperator = newLine
+                / "||"
+                / "&&"
+                / "&"
+                / ";;&"
+                / ";;"
+                / ";&"
+                / ";"
+                / "|&"
+                / "|"
+                / "\n";
+
+simpleCommand = (variableAssignment ifsCharSequence)* word (ifsCharSequence word)* ifsCharSequence? &controlOperator; 
