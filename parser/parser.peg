@@ -1,3 +1,4 @@
+code license {
 /*
  * Copyright 2017 Jacob Lifshay
  *
@@ -13,15 +14,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef PARSER_TOKENIZER_H_
-#define PARSER_TOKENIZER_H_
-
-namespace quick_shell
-{
-namespace parser
-{
-#error finish
-}
 }
 
-#endif /* PARSER_TOKENIZER_H_ */
+namespace quick_shell::parser;
+
+code header {
+#include <string>
+}
+
+code class {
+public:
+    std::u32string ifsValue;
+}
+
+typedef std::string string;
+
+newLine:string = "\r\n" {$$ = "\r\n";}
+               / [\r\n]:ch {$$ += ch;};
+
+ifsChar:char = [^]:value
+    &{
+        if(ifsValue.find(value) == std::u32string::npos)
+            $? = "not an IFS character";
+        $$ = value;
+    };
