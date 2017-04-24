@@ -1,6 +1,3 @@
-// automatically generated from parser.peg
-#line 1 "parser.peg"
-              
 /*
  * Copyright 2017 Jacob Lifshay
  *
@@ -16,197 +13,53 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
-#line 21 "parser.h"
-#ifndef PARSER_H_
-#define PARSER_H_
+#ifndef PARSER_PARSER_H_
+#define PARSER_PARSER_H_
 
 #include <utility>
-#include <cstddef>
-#include <string>
-#include <memory>
-#include <stdexcept>
-#include <sstream>
-#include <vector>
-#include <list>
-#include <cassert>
-#line 21 "parser.peg"
-             
-#include <string>
-
-#line 38 "parser.h"
+#include "text_input.h"
 
 namespace quick_shell
 {
 namespace parser
 {
+struct ParserActions
+{
+    virtual ~ParserActions() = default;
+};
+
+template <typename ParserActions = ParserActions>
 class Parser final
 {
-    Parser(const Parser &) = delete;
-    Parser &operator=(const Parser &) = delete;
-#line 25 "parser.peg"
-            
-public:
-    std::u32string ifsValue;
-
-#line 53 "parser.h"
-
 private:
-    struct RuleResult final
-    {
-        std::size_t location;
-        std::size_t endLocation;
-        bool isSuccess;
-        constexpr RuleResult() noexcept : location(std::string::npos),
-                                          endLocation(0),
-                                          isSuccess(false)
-        {
-        }
-        constexpr RuleResult(std::size_t location, std::size_t endLocation, bool success) noexcept
-            : location(location),
-              endLocation(endLocation),
-              isSuccess(success)
-        {
-        }
-        constexpr bool empty() const
-        {
-            return location == std::string::npos;
-        }
-        constexpr bool success() const
-        {
-            return !empty() && isSuccess;
-        }
-        constexpr bool fail() const
-        {
-            return !empty() && !isSuccess;
-        }
-    };
-    struct Results final
-    {
-        RuleResult resultUnimplemented;
-        RuleResult resultNewLine;
-        RuleResult resultIfsChar;
-        RuleResult resultIfsCharSequence;
-        RuleResult resultSimpleCommand;
-    };
-    struct ResultsChunk final
-    {
-        static constexpr std::size_t allocated = 0x100;
-        Results values[allocated];
-        std::size_t used = 0;
-    };
+    ParserActions &actions;
+    TextInput &ti;
 
 public:
-    struct ParseError : public std::runtime_error
+    ParserActions &getActions() noexcept
     {
-        std::size_t location;
-        const char *message;
-        static std::string makeWhatString(std::size_t location, const char *message)
-        {
-            std::ostringstream ss;
-            ss << "error at " << location << ": " << message;
-            return ss.str();
-        }
-        ParseError(std::size_t location, const char *message)
-            : runtime_error(makeWhatString(location, message)), location(location), message(message)
-        {
-        }
-    };
-
-private:
-    std::vector<Results *> resultsPointers;
-    std::list<ResultsChunk> resultsChunks;
-    Results eofResults;
-    const std::shared_ptr<const char32_t> source;
-    const std::size_t sourceSize;
-    std::size_t errorLocation = 0;
-    std::size_t errorInputEndLocation = 0;
-    const char *errorMessage = "no error";
-
-private:
-    Results &getResults(std::size_t position)
-    {
-        if(position >= sourceSize)
-            return eofResults;
-        Results *&resultsPointer = resultsPointers[position];
-        if(!resultsPointer)
-        {
-            if(resultsChunks.empty() || resultsChunks.back().used >= ResultsChunk::allocated)
-            {
-                resultsChunks.emplace_back();
-            }
-            resultsPointer = &resultsChunks.back().values[resultsChunks.back().used++];
-        }
-        return *resultsPointer;
+        return actions;
     }
-    RuleResult makeFail(std::size_t location,
-                        std::size_t inputEndLocation,
-                        const char *message,
-                        bool isRequiredForSuccess)
+    TextInput &getTextInput() noexcept
     {
-        if(isRequiredForSuccess && errorInputEndLocation <= inputEndLocation)
-        {
-            errorLocation = location;
-            errorInputEndLocation = inputEndLocation;
-            errorMessage = message;
-        }
-        return RuleResult(location, inputEndLocation, false);
+        return ti;
     }
-    RuleResult makeFail(std::size_t inputEndLocation,
-                        const char *message,
-                        bool isRequiredForSuccess)
-    {
-        return makeFail(inputEndLocation, inputEndLocation, message, isRequiredForSuccess);
-    }
-    static RuleResult makeSuccess(std::size_t location, std::size_t inputEndLocation)
-    {
-        assert(location != std::string::npos);
-        return RuleResult(location, inputEndLocation, true);
-    }
-    static RuleResult makeSuccess(std::size_t inputEndLocation)
-    {
-        assert(inputEndLocation != std::string::npos);
-        return RuleResult(inputEndLocation, inputEndLocation, true);
-    }
-    static std::pair<std::shared_ptr<const char32_t>, std::size_t> makeSource(
-        std::u32string source);
-    static std::pair<std::shared_ptr<const char32_t>, std::size_t> makeSource(
-        const char *source, std::size_t sourceSize);
 
 public:
-    Parser(std::pair<std::shared_ptr<const char32_t>, std::size_t> source)
-        : Parser(std::move(std::get<0>(source)), std::get<1>(source))
-    {
-    }
-    Parser(std::shared_ptr<const char32_t> source, std::size_t sourceSize);
-    Parser(std::u32string source);
-    Parser(const char *source, std::size_t sourceSize);
-    Parser(const char32_t *source, std::size_t sourceSize);
-    Parser(const std::string &source) : Parser(source.data(), source.size())
+    constexpr Parser(ParserActions &actions, TextInput &textInput) : actions(actions), ti(textInput)
     {
     }
 
 public:
-    void parseUnimplemented();
-    std::string parseNewLine();
-    char32_t parseIfsChar();
-    std::string parseIfsCharSequence();
-    void parseVariableAssignment();
-    void parseWord();
-    void parseControlOperator();
-    void parseSimpleCommand();
+    static constexpr bool isBlank(char32_t ch) noexcept
+    {
+        return ch == ' ' || ch == '\t';
+    }
 
 private:
-    void internalParseUnimplemented(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
-    std::string internalParseNewLine(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
-    char32_t internalParseIfsChar(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
-    std::string internalParseIfsCharSequence(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
-    void internalParseVariableAssignment(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
-    void internalParseWord(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
-    void internalParseControlOperator(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
-    void internalParseSimpleCommand(std::size_t startLocation, RuleResult &ruleResult, bool isRequiredForSuccess);
+#error finish
 };
 }
 }
 
-#endif /* PARSER_H_ */
+#endif /* PARSER_PARSER_H_ */
