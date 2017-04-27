@@ -79,6 +79,10 @@ struct Location : public LocationInFile
         : LocationInFile(line, column), file(file)
     {
     }
+    constexpr explicit Location(const InputFileDescriptor *file) noexcept
+        : LocationInFile(), file(file)
+    {
+    }
     constexpr Location(const LocationInFile &locationInFile,
                        const InputFileDescriptor *file) noexcept
         : LocationInFile(locationInFile), file(file)

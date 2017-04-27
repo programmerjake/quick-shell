@@ -19,7 +19,7 @@
 #include <vector>
 #include <string>
 #include <utility>
-#include <istream>
+#include <fstream>
 #include <cstdio>
 #include "../util/string_view.h"
 #include "location.h"
@@ -96,6 +96,33 @@ public:
         }
         return retval;
     }
+    std::vector<char> getBuffer(std::vector<char> buffer)
+    {
+        buffer.clear();
+        peek();
+        if(gotEOF)
+        {
+            gotEOF = false;
+            return buffer;
+        }
+        else
+        {
+            if(inputPosition == 0)
+            {
+                buffer.swap(inputBuffer);
+            }
+            else
+            {
+                buffer.assign(inputBuffer.begin() + inputPosition, inputBuffer.end());
+            }
+            inputPosition = 0;
+            for(unsigned char ch : buffer)
+            {
+                location = location.getNextLocation(ch, tabSize);
+            }
+            return buffer;
+        }
+    }
 };
 
 class TextInputIStream final : public TextInput
@@ -146,6 +173,39 @@ protected:
 public:
     explicit TextInputIStream(std::istream &is, const Location &location = Location()) noexcept
         : TextInput(location), is(is)
+    {
+    }
+};
+
+class TextInputFile final : public TextInput
+{
+private:
+    InputFileDescriptor inputFileDescriptor;
+    std::ifstream inputStream;
+    TextInputIStream baseTextInput;
+    std::istream &setupInputStream(const char *fileName, std::ios::openmode openMode = std::ios::in)
+    {
+        inputStream.exceptions(std::ios::badbit | std::ios::failbit);
+        inputStream.open(fileName, openMode);
+        return inputStream;
+    }
+
+protected:
+    virtual std::vector<char> fillInputBuffer(std::vector<char> inputBuffer) override
+    {
+        return baseTextInput.getBuffer(std::move(inputBuffer));
+    }
+
+public:
+    explicit TextInputFile(const char *fileName, std::ios::openmode openMode = std::ios::in)
+        : inputFileDescriptor(fileName),
+          inputStream(),
+          baseTextInput(setupInputStream(fileName, openMode), Location(&inputFileDescriptor))
+    {
+    	location = baseTextInput.location;
+    }
+    explicit TextInputFile(const std::string &fileName, std::ios::openmode openMode = std::ios::in)
+        : TextInputFile(fileName.c_str(), openMode)
     {
     }
 };

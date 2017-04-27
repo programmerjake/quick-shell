@@ -37,7 +37,7 @@ public:
     typedef const CharType *const_pointer;
     typedef CharType &reference;
     typedef const CharType &const_reference;
-    typedef CharType *const_iterator;
+    typedef const CharType *const_iterator;
     typedef const_iterator iterator;
     typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
     typedef const_reverse_iterator reverse_iterator;
@@ -46,7 +46,7 @@ public:
     static constexpr std::size_t npos = static_cast<std::size_t>(-1);
 
 private:
-    CharType *stringPointer;
+    const CharType *stringPointer;
     std::size_t stringSize;
 
 private:
@@ -60,6 +60,12 @@ public:
     {
     }
     constexpr basic_string_view(const basic_string_view &) noexcept = default;
+    template <typename Allocator>
+    constexpr basic_string_view(
+        const std::basic_string<CharType, TraitsType, Allocator> &str) noexcept
+        : stringPointer(str.data()), stringSize(str.size())
+    {
+    }
     constexpr basic_string_view(const CharType *str, std::size_t count) noexcept
         : stringPointer(str), stringSize(count)
     {
@@ -68,7 +74,7 @@ public:
         : stringPointer(str), stringSize(traits_type::length(str))
     {
     }
-    constexpr basic_string_view &operator=(const basic_string_view &) noexcept = default;
+    basic_string_view &operator=(const basic_string_view &) noexcept = default;
     constexpr const_iterator begin() const noexcept
     {
         return stringPointer;
@@ -384,14 +390,14 @@ template <typename CharType, typename TraitsType>
 constexpr bool operator==(basic_string_view<CharType, TraitsType> a,
                           basic_string_view<CharType, TraitsType> b) noexcept
 {
-    return a.compare(b) == 0;
+    return a.size() == b.size() && TraitsType::compare(a.data(), b.data(), a.size()) == 0;
 }
 
 template <typename CharType, typename TraitsType>
 constexpr bool operator!=(basic_string_view<CharType, TraitsType> a,
                           basic_string_view<CharType, TraitsType> b) noexcept
 {
-    return a.compare(b) != 0;
+    return !operator==(a, b);
 }
 
 template <typename CharType, typename TraitsType>
@@ -421,6 +427,103 @@ constexpr bool operator>(basic_string_view<CharType, TraitsType> a,
 {
     return a.compare(b) > 0;
 }
+
+#define QUICK_SHELL_UTIL_STRING_VIEW_GENERATE_EXTRA_COMPARE_OPERATORS_NO_ALLOCATOR(...) \
+    template <typename CharType, typename TraitsType>                                   \
+    bool operator==(__VA_ARGS__) noexcept                                               \
+    {                                                                                   \
+        return operator==(static_cast<basic_string_view<CharType, TraitsType>>(a),      \
+                          static_cast<basic_string_view<CharType, TraitsType>>(b));     \
+    }                                                                                   \
+                                                                                        \
+    template <typename CharType, typename TraitsType>                                   \
+    bool operator!=(__VA_ARGS__) noexcept                                               \
+    {                                                                                   \
+        return operator!=(static_cast<basic_string_view<CharType, TraitsType>>(a),      \
+                          static_cast<basic_string_view<CharType, TraitsType>>(b));     \
+    }                                                                                   \
+                                                                                        \
+    template <typename CharType, typename TraitsType>                                   \
+    bool operator<=(__VA_ARGS__) noexcept                                               \
+    {                                                                                   \
+        return operator<=(static_cast<basic_string_view<CharType, TraitsType>>(a),      \
+                          static_cast<basic_string_view<CharType, TraitsType>>(b));     \
+    }                                                                                   \
+                                                                                        \
+    template <typename CharType, typename TraitsType>                                   \
+    bool operator>=(__VA_ARGS__) noexcept                                               \
+    {                                                                                   \
+        return operator>=(static_cast<basic_string_view<CharType, TraitsType>>(a),      \
+                          static_cast<basic_string_view<CharType, TraitsType>>(b));     \
+    }                                                                                   \
+                                                                                        \
+    template <typename CharType, typename TraitsType>                                   \
+    bool operator<(__VA_ARGS__) noexcept                                                \
+    {                                                                                   \
+        return operator<(static_cast<basic_string_view<CharType, TraitsType>>(a),       \
+                         static_cast<basic_string_view<CharType, TraitsType>>(b));      \
+    }                                                                                   \
+                                                                                        \
+    template <typename CharType, typename TraitsType>                                   \
+    bool operator>(__VA_ARGS__) noexcept                                                \
+    {                                                                                   \
+        return operator>(static_cast<basic_string_view<CharType, TraitsType>>(a),       \
+                         static_cast<basic_string_view<CharType, TraitsType>>(b));      \
+    }
+
+#define QUICK_SHELL_UTIL_STRING_VIEW_GENERATE_EXTRA_COMPARE_OPERATORS_WITH_ALLOCATOR(...) \
+    template <typename CharType, typename TraitsType, typename Allocator>                 \
+    bool operator==(__VA_ARGS__) noexcept                                                 \
+    {                                                                                     \
+        return operator==(static_cast<basic_string_view<CharType, TraitsType>>(a),        \
+                          static_cast<basic_string_view<CharType, TraitsType>>(b));       \
+    }                                                                                     \
+                                                                                          \
+    template <typename CharType, typename TraitsType, typename Allocator>                 \
+    bool operator!=(__VA_ARGS__) noexcept                                                 \
+    {                                                                                     \
+        return operator!=(static_cast<basic_string_view<CharType, TraitsType>>(a),        \
+                          static_cast<basic_string_view<CharType, TraitsType>>(b));       \
+    }                                                                                     \
+                                                                                          \
+    template <typename CharType, typename TraitsType, typename Allocator>                 \
+    bool operator<=(__VA_ARGS__) noexcept                                                 \
+    {                                                                                     \
+        return operator<=(static_cast<basic_string_view<CharType, TraitsType>>(a),        \
+                          static_cast<basic_string_view<CharType, TraitsType>>(b));       \
+    }                                                                                     \
+                                                                                          \
+    template <typename CharType, typename TraitsType, typename Allocator>                 \
+    bool operator>=(__VA_ARGS__) noexcept                                                 \
+    {                                                                                     \
+        return operator>=(static_cast<basic_string_view<CharType, TraitsType>>(a),        \
+                          static_cast<basic_string_view<CharType, TraitsType>>(b));       \
+    }                                                                                     \
+                                                                                          \
+    template <typename CharType, typename TraitsType, typename Allocator>                 \
+    bool operator<(__VA_ARGS__) noexcept                                                  \
+    {                                                                                     \
+        return operator<(static_cast<basic_string_view<CharType, TraitsType>>(a),         \
+                         static_cast<basic_string_view<CharType, TraitsType>>(b));        \
+    }                                                                                     \
+                                                                                          \
+    template <typename CharType, typename TraitsType, typename Allocator>                 \
+    bool operator>(__VA_ARGS__) noexcept                                                  \
+    {                                                                                     \
+        return operator>(static_cast<basic_string_view<CharType, TraitsType>>(a),         \
+                         static_cast<basic_string_view<CharType, TraitsType>>(b));        \
+    }
+
+QUICK_SHELL_UTIL_STRING_VIEW_GENERATE_EXTRA_COMPARE_OPERATORS_NO_ALLOCATOR(
+    const CharType *a, basic_string_view<CharType, TraitsType> b)
+QUICK_SHELL_UTIL_STRING_VIEW_GENERATE_EXTRA_COMPARE_OPERATORS_NO_ALLOCATOR(
+    basic_string_view<CharType, TraitsType> a, const CharType *b)
+QUICK_SHELL_UTIL_STRING_VIEW_GENERATE_EXTRA_COMPARE_OPERATORS_WITH_ALLOCATOR(
+    basic_string_view<CharType, TraitsType> a, std::basic_string<CharType, TraitsType, Allocator> b)
+QUICK_SHELL_UTIL_STRING_VIEW_GENERATE_EXTRA_COMPARE_OPERATORS_WITH_ALLOCATOR(
+    std::basic_string<CharType, TraitsType, Allocator> a, basic_string_view<CharType, TraitsType> b)
+#undef QUICK_SHELL_UTIL_STRING_VIEW_GENERATE_EXTRA_COMPARE_OPERATORS_NO_ALLOCATOR
+#undef QUICK_SHELL_UTIL_STRING_VIEW_GENERATE_EXTRA_COMPARE_OPERATORS_WITH_ALLOCATOR
 
 template <typename CharType, typename TraitsType>
 std::basic_ostream<CharType, TraitsType> &operator<<(std::basic_ostream<CharType, TraitsType> &os,
