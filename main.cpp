@@ -30,13 +30,13 @@ int main()
                                  ParserBase::TokenType tokenType,
                                  const std::string &tokenValue) override
         {
-            std::cout << "handleToken(" << parserLevel << ", "
+            std::cerr << "handleToken(" << parserLevel << ", "
                       << ParserBase::getTokenDebugString(location, tokenType, tokenValue) << ")"
                       << std::endl;
         }
     };
     MyParserActions parserActions;
-    Parser<MyParserActions, true> parser(parserActions, textInput, &std::cout);
+    Parser<MyParserActions, true> parser(parserActions, textInput, &std::cerr);
     for(;;)
     {
         switch(parser.parseCommand())

@@ -22,6 +22,7 @@
 #include "../util/compiler_intrinsics.h"
 #include <sstream>
 #include <vector>
+#include <stdexcept>
 
 namespace quick_shell
 {
@@ -236,6 +237,23 @@ public:
         Success,
         NoCommand,
         Quit,
+    };
+    struct ParseError : public std::runtime_error
+    {
+        Location location;
+        std::string message;
+        static std::string makeWhatMessage(Location location, const std::string &message)
+        {
+            std::ostringstream os;
+            os << location << ": " << message;
+            return os.str();
+        }
+        explicit ParseError(Location location, std::string message)
+            : std::runtime_error(makeWhatMessage(location, message)),
+              location(std::move(location)),
+              message(std::move(message))
+        {
+        }
     };
 
 protected:
@@ -454,6 +472,64 @@ protected:
         UNREACHABLE();
         return false;
     }
+    static bool isWordTerminator(TokenType tokenType, bool inBackticks) noexcept
+    {
+        switch(tokenType)
+        {
+        case TokenType::EndOfFile:
+        case TokenType::Newline:
+        case TokenType::RParen:
+        case TokenType::Semicolon:
+        case TokenType::Blanks:
+        case TokenType::LParen:
+        case TokenType::Comment:
+            return true;
+        case TokenType::Backtick:
+            return inBackticks;
+        case TokenType::SingleQuote:
+        case TokenType::DollarSingleQuoteStart:
+        case TokenType::DollarSingleQuoteEnd:
+        case TokenType::UnquotedWordPart:
+        case TokenType::QuotedWordPart:
+        case TokenType::UnquotedSimpleSubstitution:
+        case TokenType::QuotedSimpleSubstitution:
+        case TokenType::UnquotedSubstitutionStart:
+        case TokenType::QuotedSubstitutionStart:
+        case TokenType::UnquotedShellSubstitutionStart:
+        case TokenType::QuotedShellSubstitutionStart:
+        case TokenType::Equal:
+        case TokenType::ExMark:
+        case TokenType::LBrace:
+        case TokenType::RBrace:
+        case TokenType::LBracket:
+        case TokenType::RBracket:
+        case TokenType::DoubleLBracket:
+        case TokenType::DoubleRBracket:
+        case TokenType::DoubleLParen:
+        case TokenType::DoubleRParen:
+        case TokenType::Name:
+        case TokenType::Case:
+        case TokenType::Coproc:
+        case TokenType::Do:
+        case TokenType::Done:
+        case TokenType::ElIf:
+        case TokenType::Else:
+        case TokenType::Esac:
+        case TokenType::Fi:
+        case TokenType::For:
+        case TokenType::Function:
+        case TokenType::If:
+        case TokenType::In:
+        case TokenType::Select:
+        case TokenType::Time:
+        case TokenType::Then:
+        case TokenType::Until:
+        case TokenType::While:
+            return false;
+        }
+        UNREACHABLE();
+        return false;
+    }
 };
 
 template <bool DebuggingEnabled>
@@ -516,7 +592,17 @@ public:
 private:
     void tokenizeReservedWord()
     {
-        assert(tokenType == TokenType::UnquotedWordPart || tokenType == TokenType::Name);
+        auto oldTokenType = tokenType;
+        tokenType = tokenizeReservedWord(tokenType, tokenValue);
+        if(tokenType != oldTokenType && debugOutput)
+        {
+            *debugOutput << getTokenDebugString() << std::endl;
+        }
+    }
+    static TokenType tokenizeReservedWord(TokenType type,
+                                          util::string_view value) noexcept
+    {
+        assert(type == TokenType::UnquotedWordPart || type == TokenType::Name);
         struct ReservedWord
         {
             TokenType tokenType;
@@ -548,16 +634,13 @@ private:
         };
         for(auto &reservedWord : reservedWords)
         {
-            if(reservedWord.word == tokenValue)
+            if(reservedWord.word == value)
             {
-                tokenType = reservedWord.tokenType;
-                if(debugOutput)
-                {
-                    *debugOutput << getTokenDebugString() << std::endl;
-                }
+                type = reservedWord.tokenType;
                 break;
             }
         }
+        return type;
     }
     void reparseToken(TokenizerMode mode, bool outputAndSkipComments = true)
     {
@@ -700,7 +783,7 @@ private:
         if(!isInitialToken)
             outputToken(tokenLocation, tokenType, tokenValue);
     }
-    void outputToken(Location location, ParserBase::TokenType type, const std::string &value) const
+    void outputToken(Location location, TokenType type, const std::string &value) const
     {
         actions.handleToken(parserLevel, location, type, value);
     }
@@ -715,75 +798,33 @@ private:
     {
         PushLevel pushLevel(this);
         reparseToken(TokenizerMode::Command, false);
+        auto initialTokenLocation = tokenLocation;
+        auto initialTokenType = tokenType;
+        auto initialTokenValue = tokenValue;
+        outputAndNextToken(TokenizerMode::Command, false);
+        parseUnsplitWordContinuation(
+            inBackticks, initialTokenLocation, initialTokenType, initialTokenValue);
+    }
+    void parseUnsplitWordContinuation(bool inBackticks,
+                                      Location initialTokenLocation,
+                                      TokenType initialTokenType,
+                                      const std::string &initialTokenValue)
+    {
+        PushLevel pushLevel(this);
+        if(isWordTerminator(tokenType, inBackticks))
+            return;
+        reparseToken(TokenizerMode::Command, false);
         while(true)
         {
-            switch(tokenType)
-            {
-            case TokenType::EndOfFile:
-            case TokenType::Newline:
-            case TokenType::Blanks:
-                return;
-            case TokenType::SingleQuote:
-            case TokenType::DollarSingleQuoteStart:
-            case TokenType::DollarSingleQuoteEnd:
-            case TokenType::UnquotedWordPart:
-            case TokenType::QuotedWordPart:
-            case TokenType::UnquotedSimpleSubstitution:
-            case TokenType::QuotedSimpleSubstitution:
-            case TokenType::UnquotedSubstitutionStart:
-            case TokenType::QuotedSubstitutionStart:
-            case TokenType::UnquotedShellSubstitutionStart:
-            case TokenType::QuotedShellSubstitutionStart:
-            case TokenType::LParen:
-            case TokenType::RParen:
-            case TokenType::Equal:
-            case TokenType::ExMark:
-            case TokenType::LBrace:
-            case TokenType::RBrace:
-            case TokenType::LBracket:
-            case TokenType::RBracket:
-            case TokenType::DoubleLBracket:
-            case TokenType::DoubleRBracket:
-            case TokenType::DoubleLParen:
-            case TokenType::DoubleRParen:
-            case TokenType::Semicolon:
-                UNIMPLEMENTED();
-                break;
-            case TokenType::Backtick:
-                if(inBackticks)
-                    return;
-                UNIMPLEMENTED();
-                break;
-            case TokenType::Comment:
-            case TokenType::Name:
-            case TokenType::Case:
-            case TokenType::Coproc:
-            case TokenType::Do:
-            case TokenType::Done:
-            case TokenType::ElIf:
-            case TokenType::Else:
-            case TokenType::Esac:
-            case TokenType::Fi:
-            case TokenType::For:
-            case TokenType::Function:
-            case TokenType::If:
-            case TokenType::In:
-            case TokenType::Select:
-            case TokenType::Time:
-            case TokenType::Then:
-            case TokenType::Until:
-            case TokenType::While:
-                UNREACHABLE();
-                break;
-            }
+            UNIMPLEMENTED();
         }
     }
     void parseSimpleVariableAssignment(std::string &&variableName,
                                        Location variableNameLocation,
                                        bool inBackticks)
     {
-    	assert(tokenType == TokenType::Equal);
-    	outputAndNextToken(TokenizerMode::Command);
+        assert(tokenType == TokenType::Equal);
+        outputAndNextToken(TokenizerMode::Command);
         UNIMPLEMENTED();
     }
     bool parseSimpleCommand(bool inBackticks)
@@ -804,7 +845,7 @@ private:
                 auto initialTokenType = tokenType;
                 auto initialTokenValue = tokenValue;
                 auto initialTokenLocation = tokenLocation;
-                parseNextToken(TokenizerMode::CommandWithNames, false);
+                parseNextToken(TokenizerMode::CommandWithNames);
                 if(tokenType == TokenType::Equal) // variable assignment
                 {
                     initialTokenType = TokenType::Name;
@@ -818,6 +859,10 @@ private:
                 {
                     UNIMPLEMENTED();
                     continue;
+                }
+                else if(tokenType == TokenType::Blanks
+                        || isCommandTerminator(tokenType, inBackticks))
+                {
                 }
                 else
                 {
