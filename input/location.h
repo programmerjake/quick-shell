@@ -13,28 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef PARSER_LOCATION_H_
-#define PARSER_LOCATION_H_
+#ifndef INPUT_LOCATION_H_
+#define INPUT_LOCATION_H_
 
 #include <string>
 #include <utility>
 #include <ostream>
 
-#error refactoring: remove file after implementing replacement in input/location.h
-
 namespace quick_shell
 {
-namespace parser
+namespace input
 {
-struct LocationInFile
+#error finish
+struct SimpleLocation
 {
     std::size_t line;
     std::size_t column;
-    constexpr LocationInFile() noexcept : line(1), column(1)
+    constexpr SimpleLocation() noexcept : line(1), column(1)
     {
     }
-    constexpr LocationInFile(std::size_t line, std::size_t column) noexcept
-        : line(line), column(column)
+    constexpr SimpleLocation(std::size_t line, std::size_t column) noexcept : line(line),
+                                                                              column(column)
     {
     }
     static constexpr std::size_t defaultTabSize = 8;
@@ -47,14 +46,14 @@ struct LocationInFile
     {
         return columnAfterTab(column, tabSize);
     }
-    constexpr LocationInFile getNextLocation(char32_t ch,
+    constexpr SimpleLocation getNextLocation(char32_t ch,
                                              std::size_t tabSize = defaultTabSize) const noexcept
     {
-        return ch == '\n' ? LocationInFile(line + 1, 1) :
-                            ch == '\t' ? LocationInFile(line, columnAfterTab(tabSize)) :
-                                         LocationInFile(line, column + 1);
+        return ch == '\n' ? SimpleLocation(line + 1, 1) : ch == '\t' ?
+                            SimpleLocation(line, columnAfterTab(tabSize)) :
+                            SimpleLocation(line, column + 1);
     }
-    friend std::ostream &operator<<(std::ostream &os, const LocationInFile &v)
+    friend std::ostream &operator<<(std::ostream &os, const SimpleLocation &v)
     {
         os << v.line << ":" << v.column;
         return os;
@@ -69,31 +68,31 @@ struct InputFileDescriptor
     }
 };
 
-struct Location : public LocationInFile
+struct Location : public SimpleLocation
 {
     const InputFileDescriptor *file;
-    constexpr Location() noexcept : LocationInFile(), file()
+    constexpr Location() noexcept : SimpleLocation(), file()
     {
     }
     constexpr Location(std::size_t line,
                        std::size_t column,
-                       const InputFileDescriptor *file) noexcept
-        : LocationInFile(line, column), file(file)
+                       const InputFileDescriptor *file) noexcept : SimpleLocation(line, column),
+                                                                   file(file)
     {
     }
-    constexpr explicit Location(const InputFileDescriptor *file) noexcept
-        : LocationInFile(), file(file)
+    constexpr explicit Location(const InputFileDescriptor *file) noexcept : SimpleLocation(),
+                                                                            file(file)
     {
     }
-    constexpr Location(const LocationInFile &locationInFile,
-                       const InputFileDescriptor *file) noexcept
-        : LocationInFile(locationInFile), file(file)
+    constexpr Location(const SimpleLocation &locationInFile,
+                       const InputFileDescriptor *file) noexcept : SimpleLocation(locationInFile),
+                                                                   file(file)
     {
     }
     constexpr Location getNextLocation(char32_t ch, std::size_t tabSize = defaultTabSize) const
         noexcept
     {
-        return Location(LocationInFile::getNextLocation(ch, tabSize), file);
+        return Location(SimpleLocation::getNextLocation(ch, tabSize), file);
     }
     friend std::ostream &operator<<(std::ostream &os, const Location &v)
     {
@@ -101,11 +100,11 @@ struct Location : public LocationInFile
             os << v.file->fileName;
         else
             os << "<unknown>";
-        os << ":" << static_cast<const LocationInFile &>(v);
+        os << ":" << static_cast<const SimpleLocation &>(v);
         return os;
     }
 };
 }
 }
 
-#endif /* PARSER_LOCATION_H_ */
+#endif /* INPUT_LOCATION_H_ */

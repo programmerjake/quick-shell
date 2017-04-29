@@ -24,6 +24,8 @@
 #include "../util/string_view.h"
 #include "location.h"
 
+#error refactoring: remove file after implementing replacement in input/input.h
+
 namespace quick_shell
 {
 namespace parser
@@ -172,7 +174,8 @@ protected:
 
 public:
     explicit TextInputIStream(std::istream &is, const Location &location = Location()) noexcept
-        : TextInput(location), is(is)
+        : TextInput(location),
+          is(is)
     {
     }
 };
@@ -202,7 +205,7 @@ public:
           inputStream(),
           baseTextInput(setupInputStream(fileName, openMode), Location(&inputFileDescriptor))
     {
-    	location = baseTextInput.location;
+        location = baseTextInput.location;
     }
     explicit TextInputFile(const std::string &fileName, std::ios::openmode openMode = std::ios::in)
         : TextInputFile(fileName.c_str(), openMode)
@@ -248,7 +251,9 @@ protected:
 
 public:
     TextInputStdIO(std::FILE *f, bool closeFile, const Location &location = Location()) noexcept
-        : TextInput(location), f(f), closeFile(closeFile)
+        : TextInput(location),
+          f(f),
+          closeFile(closeFile)
     {
     }
     ~TextInputStdIO()

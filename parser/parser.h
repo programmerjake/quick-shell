@@ -599,8 +599,7 @@ private:
             *debugOutput << getTokenDebugString() << std::endl;
         }
     }
-    static TokenType tokenizeReservedWord(TokenType type,
-                                          util::string_view value) noexcept
+    static TokenType tokenizeReservedWord(TokenType type, util::string_view value) noexcept
     {
         assert(type == TokenType::UnquotedWordPart || type == TokenType::Name);
         struct ReservedWord
