@@ -20,7 +20,7 @@
 #include <utility>
 #include <ostream>
 
-#error refactoring: remove file after implementing replacement in input/location.h
+#warning refactoring: remove file after implementing replacement in input/location.h
 
 namespace quick_shell
 {

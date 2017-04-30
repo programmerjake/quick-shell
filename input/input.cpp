@@ -20,6 +20,14 @@ namespace quick_shell
 {
 namespace input
 {
+constexpr std::size_t InputStyle::defaultTabSize;
+
+std::ostream &operator<<(std::ostream &os, const LineAndColumn &v)
+{
+    os << v.line << ':' << v.column;
+    return os;
+}
+
 constexpr std::size_t Input::eofSize;
 
 Input::Chunk::Chunk(std::shared_ptr<unsigned char> memory) : memory(memory.get())
@@ -64,6 +72,50 @@ void Input::readTo(std::size_t targetIndex)
         {
             validMemorySize += readCount;
         }
+    }
+}
+
+template <typename Fn>
+void Input::updateLineStartIndexesHelper(Fn &&fn)
+{
+    std::size_t endIndex = validMemorySize;
+    std::size_t startIndex = validLineStartIndexesIndex;
+    assert(endIndex > startIndex);
+    auto iter = iteratorAt(validLineStartIndexesIndex);
+    for(std::size_t i = validLineStartIndexesIndex; i < validMemorySize; i++)
+    {
+        int ch = *iter;
+        if(i + 1 < validMemorySize)
+        {
+            ++iter;
+            int ch2 = *iter;
+            if(isNewLinePair(ch, ch2, inputStyle))
+            {
+                fn(i + 2);
+                continue;
+            }
+        }
+        if(isNewLine(ch, inputStyle))
+            fn(i + 1);
+    }
+    assert(validMemorySize == endIndex); // verify that we haven't read any more
+}
+
+void Input::updateLineStartIndexes()
+{
+    if(validLineStartIndexesIndex < validMemorySize)
+    {
+        std::size_t lineStartIndexCount = lineStartIndexes.size();
+        updateLineStartIndexesHelper([&](std::size_t index)
+                                     {
+                                         lineStartIndexCount++;
+                                     });
+        lineStartIndexes.reserve(lineStartIndexCount);
+        updateLineStartIndexesHelper([&](std::size_t index)
+                                     {
+                                         lineStartIndexes.push_back(index);
+                                     });
+        validLineStartIndexesIndex = validMemorySize;
     }
 }
 }

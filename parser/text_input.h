@@ -24,7 +24,7 @@
 #include "../util/string_view.h"
 #include "location.h"
 
-#error refactoring: remove file after implementing replacement in input/input.h
+#warning refactoring: remove file after implementing replacement in input/input.h
 
 namespace quick_shell
 {
