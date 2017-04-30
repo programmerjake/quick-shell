@@ -110,10 +110,11 @@ class Input
 public:
     /** number of character positions an EOF takes */
     static constexpr std::size_t eofSize = 1;
-    const InputStyle inputStyle;
 
 protected:
-    virtual std::size_t read(std::size_t startIndex, unsigned char *buffer, std::size_t count) = 0;
+    virtual std::size_t read(std::size_t startIndex,
+                             unsigned char *buffer,
+                             std::size_t bufferSize) = 0;
 
 protected:
     const bool retryAfterEOF;
@@ -204,6 +205,7 @@ private:
     };
 
 private:
+    InputStyle inputStyle;
     std::string name;
     std::vector<Chunk> chunks;
     std::size_t validMemorySize;
@@ -248,9 +250,9 @@ public:
                    std::shared_ptr<const unsigned char> memory,
                    std::size_t memorySize,
                    std::set<std::size_t> eofPositions,
-                   bool retryAfterEOF = true)
-        : inputStyle(inputStyle),
-          retryAfterEOF(retryAfterEOF),
+                   bool retryAfterEOF)
+        : retryAfterEOF(retryAfterEOF),
+          inputStyle(inputStyle),
           name(std::move(name)),
           chunks(),
           validMemorySize(memorySize),
@@ -275,7 +277,7 @@ public:
             chunks.push_back(std::move(lastChunk));
         }
     }
-    explicit Input(std::string name, const InputStyle &inputStyle, bool retryAfterEOF = false)
+    explicit Input(std::string name, const InputStyle &inputStyle, bool retryAfterEOF)
         : Input(std::move(name), inputStyle, nullptr, 0, std::set<std::size_t>(), retryAfterEOF)
     {
     }
@@ -283,6 +285,24 @@ public:
     const std::string &getName() const noexcept
     {
         return name;
+    }
+    void setName(std::string &&newName)
+    {
+        name.swap(newName);
+    }
+    void setName(const std::string &newName)
+    {
+        name = newName;
+    }
+    const InputStyle &getInputStyle() const noexcept
+    {
+        return inputStyle;
+    }
+    void setInputStyle(const InputStyle &newInputStyle)
+    {
+        inputStyle = newInputStyle;
+        lineStartIndexes.clear();
+        validLineStartIndexesIndex = 0;
     }
     LineAndIndex getLineAndStartIndex(std::size_t index)
     {
@@ -375,6 +395,7 @@ public:
         {
             if(!input)
             {
+            	value = eof;
                 index = 0;
                 nextSpecialIndexAfter = 0;
                 return *this;
@@ -383,6 +404,8 @@ public:
             assert(index != static_cast<std::size_t>(-1));
             if(index == nextSpecialIndexAfter)
                 *this = Iterator(input, index);
+            else
+            	value = input->readNonspecial(index);
             return *this;
         }
         Iterator operator++(int)
@@ -397,7 +420,7 @@ public:
         }
         bool operator!=(const Iterator &rt) const noexcept
         {
-            return input != rt.input && index != rt.index;
+            return input != rt.input || index != rt.index;
         }
         std::size_t getIndex() const noexcept
         {
@@ -468,11 +491,11 @@ public:
     }
     Location getLocation(std::size_t index) noexcept
     {
-    	return Location(index, this);
+        return Location(index, this);
     }
     Location getLocation(const Iterator &i) noexcept
     {
-    	return getLocation(i.getIndex());
+        return getLocation(i.getIndex());
     }
 };
 }

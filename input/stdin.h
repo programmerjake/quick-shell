@@ -13,26 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "input/stdin.h"
-#include <iostream>
+#ifndef INPUT_STDIN_H_
+#define INPUT_STDIN_H_
 
-int main()
+#include <memory>
+#include "input.h"
+
+namespace quick_shell
 {
-    using namespace quick_shell;
-    auto stdInInput = input::makeStdInInput(input::InputStyle(), true);
-    int eofCount = 0;
-    for(auto i = stdInInput->begin(); i != stdInInput->end(); ++i)
-    {
-        int ch = *i;
-        if(ch == input::eof)
-        {
-            eofCount++;
-            if(eofCount > 5)
-                break;
-        }
-        std::cout << "\n" << stdInInput->getLocation(i) << " " << ch;
-        if(ch >= 0x20 && ch < 0x7F)
-            std::cout << ' ' << static_cast<char>(ch);
-        std::cout << std::endl;
-    }
+namespace input
+{
+std::unique_ptr<Input> makeStdInInput(const InputStyle &inputStyle, bool retryAfterEOF);
+bool isStdInATerminal() noexcept;
 }
+}
+
+#endif /* INPUT_STDIN_H_ */
