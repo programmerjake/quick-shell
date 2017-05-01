@@ -15,8 +15,8 @@
  */
 
 #include "location.h"
-#include "input.h"
 #include <ostream>
+#include "text_input.h"
 
 namespace quick_shell
 {
@@ -35,6 +35,34 @@ std::ostream &operator<<(std::ostream &os, const Location &v)
     else
         os << "<unknown>:" << static_cast<const SimpleLocation &>(v);
     return os;
+}
+
+std::ostream &operator<<(std::ostream &os, const SimpleLocationSpan &v)
+{
+    return os << static_cast<SimpleLocation>(v);
+}
+
+std::string LocationSpan::getTextInputText(std::string bufferSource, char replacementForEOF) const
+{
+	std::string &retval = bufferSource;
+    assert(input);
+    retval.resize(size());
+    auto iter = input->iteratorAt(beginIndex);
+    for(std::size_t i = 0; i < size(); i++)
+    {
+    	int ch = *iter;
+    	if(ch == eof)
+    		ch = static_cast<unsigned char>(replacementForEOF);
+    	retval[i] = ch;
+    	if(i + 1 < size()) // so we don't increment the iterator past the end
+    		++iter;
+    }
+    return std::move(retval);
+}
+
+std::ostream &operator<<(std::ostream &os, const LocationSpan &v)
+{
+    return os << static_cast<Location>(v);
 }
 }
 }

@@ -27,9 +27,10 @@ namespace quick_shell
 {
 namespace input
 {
-std::unique_ptr<Input> makeStdInInput(const InputStyle &inputStyle, bool retryAfterEOF)
+std::unique_ptr<TextInput> makeStdInTextInput(const TextInputStyle &inputStyle, bool retryAfterEOF)
 {
-    return std::unique_ptr<Input>(new IStreamInput("stdin", inputStyle, std::cin, retryAfterEOF));
+    return std::unique_ptr<TextInput>(
+        new IStreamTextInput("stdin", inputStyle, std::cin, retryAfterEOF));
 }
 
 bool isStdInATerminal() noexcept

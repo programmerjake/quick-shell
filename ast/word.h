@@ -18,7 +18,6 @@
 
 #include "ast_base.h"
 #include <vector>
-#include <initializer_list>
 
 namespace quick_shell
 {

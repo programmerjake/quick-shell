@@ -13,14 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "input.h"
 #include <iostream>
+
+#include "text_input.h"
 
 namespace quick_shell
 {
 namespace input
 {
-constexpr std::size_t InputStyle::defaultTabSize;
+constexpr std::size_t TextInputStyle::defaultTabSize;
 
 std::ostream &operator<<(std::ostream &os, const LineAndColumn &v)
 {
@@ -28,9 +29,9 @@ std::ostream &operator<<(std::ostream &os, const LineAndColumn &v)
     return os;
 }
 
-constexpr std::size_t Input::eofSize;
+constexpr std::size_t TextInput::eofSize;
 
-Input::Chunk::Chunk(std::shared_ptr<unsigned char> memory) : memory(memory.get())
+TextInput::Chunk::Chunk(std::shared_ptr<unsigned char> memory) : memory(memory.get())
 {
     freeArg = static_cast<void *>(new std::shared_ptr<unsigned char>(std::move(memory)));
     freeFn = [](void *freeArg)
@@ -39,7 +40,7 @@ Input::Chunk::Chunk(std::shared_ptr<unsigned char> memory) : memory(memory.get()
     };
 }
 
-void Input::readTo(std::size_t targetIndex)
+void TextInput::readTo(std::size_t targetIndex)
 {
 #ifndef NDEBUG
     if(targetIndex > validMemorySize) // advancing by more than one
@@ -76,7 +77,7 @@ void Input::readTo(std::size_t targetIndex)
 }
 
 template <typename Fn>
-void Input::updateLineStartIndexesHelper(Fn &&fn)
+void TextInput::updateLineStartIndexesHelper(Fn &&fn)
 {
     std::size_t endIndex = validMemorySize;
     std::size_t startIndex = validLineStartIndexesIndex;
@@ -101,7 +102,7 @@ void Input::updateLineStartIndexesHelper(Fn &&fn)
     assert(validMemorySize == endIndex); // verify that we haven't read any more
 }
 
-void Input::updateLineStartIndexes()
+void TextInput::updateLineStartIndexes()
 {
     if(validLineStartIndexesIndex < validMemorySize)
     {

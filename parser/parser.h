@@ -18,245 +18,56 @@
 
 #include <utility>
 #include <cassert>
-#include "text_input.h"
-#include "../util/compiler_intrinsics.h"
 #include <sstream>
 #include <vector>
 #include <stdexcept>
+#include "../util/compiler_intrinsics.h"
+#include "../input/text_input.h"
+#include "../input/location.h"
 
 namespace quick_shell
 {
 namespace parser
 {
-struct ParserActions;
-
-class ParserBase
+struct ParseError : public std::runtime_error
 {
-private:
-    TextInput &ti;
-    std::vector<int> rewindBuffer{};
-    std::size_t rewindBufferPosition = 0;
-    Location rewindBufferStartLocation{};
+    input::Location location;
+    std::string message;
+    static std::string makeWhatMessage(input::Location location, const std::string &message)
+    {
+        std::ostringstream os;
+        os << location << ": " << message;
+        return os.str();
+    }
+    explicit ParseError(input::Location location, std::string message)
+        : runtime_error(makeWhatMessage(location, message)),
+          location(std::move(location)),
+          message(std::move(message))
+    {
+    }
+};
 
-protected:
-    Location charLocation{};
+enum class ParseCommandResult
+{
+    Success,
+    NoCommand,
+    Quit,
+};
 
-protected:
-    int peekChar()
-    {
-        if(rewindBufferPosition < rewindBuffer.size())
-            return rewindBuffer[rewindBufferPosition];
-        if(rewindBuffer.empty())
-        {
-            rewindBufferStartLocation = ti.location;
-            charLocation = ti.location;
-        }
-        rewindBuffer.push_back(ti.get());
-        assert(rewindBufferPosition < rewindBuffer.size());
-        return rewindBuffer[rewindBufferPosition];
-    }
-    int getChar()
-    {
-        int retval = peekChar();
-        rewindBufferPosition++;
-        if(retval != TextInput::eof)
-            charLocation = charLocation.getNextLocation(retval, ti.tabSize);
-        return retval;
-    }
-    void discardRewindBuffer()
-    {
-        rewindBuffer.erase(rewindBuffer.begin(), rewindBuffer.begin() + rewindBufferPosition);
-        rewindBufferPosition = 0;
-        rewindBufferStartLocation = charLocation;
-    }
-    void rewind()
-    {
-        rewindBufferPosition = 0;
-        charLocation = rewindBufferStartLocation;
-    }
-
-protected:
-    explicit ParserBase(TextInput &textInput) : ti(textInput), rewindBuffer()
-    {
-    }
+class Parser final
+{
+    Parser(const Parser &) = delete;
+    Parser &operator=(const Parser &) = delete;
 
 public:
-    enum class TokenType
-    {
-        EndOfFile,
-        Newline,
-        Blanks,
-        Comment,
-        SingleQuote,
-        DollarSingleQuoteStart,
-        DollarSingleQuoteEnd,
-        UnquotedWordPart,
-        QuotedWordPart,
-        Name,
-        UnquotedSimpleSubstitution,
-        QuotedSimpleSubstitution,
-        UnquotedSubstitutionStart,
-        QuotedSubstitutionStart,
-        UnquotedShellSubstitutionStart,
-        QuotedShellSubstitutionStart,
-        LParen,
-        RParen,
-        Equal,
-        ExMark,
-        LBrace,
-        RBrace,
-        LBracket,
-        RBracket,
-        DoubleLBracket,
-        DoubleRBracket,
-        DoubleLParen,
-        DoubleRParen,
-        Semicolon,
-        Backtick,
-        Case, // "case"
-        Coproc, // "coproc"
-        Do, // "do"
-        Done, // "done"
-        ElIf, // "elif"
-        Else, // "else"
-        Esac, // "esac"
-        Fi, // "fi"
-        For, // "for"
-        Function, // "function"
-        If, // "if"
-        In, // "in"
-        Select, // "select"
-        Time, // "time"
-        Then, // "then"
-        Until, // "until"
-        While, // "while"
-    };
-    static util::string_view getTokenTypeName(TokenType v) noexcept
-    {
-        switch(v)
-        {
-        case TokenType::EndOfFile:
-            return "EndOfFile";
-        case TokenType::Newline:
-            return "Newline";
-        case TokenType::Blanks:
-            return "Blanks";
-        case TokenType::Comment:
-            return "Comment";
-        case TokenType::SingleQuote:
-            return "SingleQuote";
-        case TokenType::DollarSingleQuoteStart:
-            return "DollarSingleQuoteStart";
-        case TokenType::DollarSingleQuoteEnd:
-            return "DollarSingleQuoteEnd";
-        case TokenType::UnquotedWordPart:
-            return "UnquotedWordPart";
-        case TokenType::QuotedWordPart:
-            return "QuotedWordPart";
-        case TokenType::Name:
-            return "Name";
-        case TokenType::UnquotedSimpleSubstitution:
-            return "UnquotedSimpleSubstitution";
-        case TokenType::QuotedSimpleSubstitution:
-            return "QuotedSimpleSubstitution";
-        case TokenType::UnquotedSubstitutionStart:
-            return "UnquotedSubstitutionStart";
-        case TokenType::QuotedSubstitutionStart:
-            return "QuotedSubstitutionStart";
-        case TokenType::UnquotedShellSubstitutionStart:
-            return "UnquotedShellSubstitutionStart";
-        case TokenType::QuotedShellSubstitutionStart:
-            return "QuotedShellSubstitutionStart";
-        case TokenType::LParen:
-            return "LParen";
-        case TokenType::RParen:
-            return "RParen";
-        case TokenType::Equal:
-            return "Equal";
-        case TokenType::ExMark:
-            return "ExMark";
-        case TokenType::LBrace:
-            return "LBrace";
-        case TokenType::RBrace:
-            return "RBrace";
-        case TokenType::LBracket:
-            return "LBracket";
-        case TokenType::RBracket:
-            return "RBracket";
-        case TokenType::DoubleLBracket:
-            return "DoubleLBracket";
-        case TokenType::DoubleRBracket:
-            return "DoubleRBracket";
-        case TokenType::DoubleLParen:
-            return "DoubleLParen";
-        case TokenType::DoubleRParen:
-            return "DoubleRParen";
-        case TokenType::Semicolon:
-            return "Semicolon";
-        case TokenType::Backtick:
-            return "Backtick";
-        case TokenType::Case:
-            return "Case";
-        case TokenType::Coproc:
-            return "Coproc";
-        case TokenType::Do:
-            return "Do";
-        case TokenType::Done:
-            return "Done";
-        case TokenType::ElIf:
-            return "ElIf";
-        case TokenType::Else:
-            return "Else";
-        case TokenType::Esac:
-            return "Esac";
-        case TokenType::Fi:
-            return "Fi";
-        case TokenType::For:
-            return "For";
-        case TokenType::Function:
-            return "Function";
-        case TokenType::If:
-            return "If";
-        case TokenType::In:
-            return "In";
-        case TokenType::Select:
-            return "Select";
-        case TokenType::Time:
-            return "Time";
-        case TokenType::Then:
-            return "Then";
-        case TokenType::Until:
-            return "Until";
-        case TokenType::While:
-            return "While";
-        }
-        return "<unknown>";
-    }
-    enum class ParseCommandResult
-    {
-        Success,
-        NoCommand,
-        Quit,
-    };
-    struct ParseError : public std::runtime_error
-    {
-        Location location;
-        std::string message;
-        static std::string makeWhatMessage(Location location, const std::string &message)
-        {
-            std::ostringstream os;
-            os << location << ": " << message;
-            return os.str();
-        }
-        explicit ParseError(Location location, std::string message)
-            : std::runtime_error(makeWhatMessage(location, message)),
-              location(std::move(location)),
-              message(std::move(message))
-        {
-        }
-    };
+    input::TextInput &textInput;
 
-protected:
+public:
+    explicit Parser(input::TextInput &textInput) : textInput(textInput)
+    {
+    }
+
+private:
     static void escapeStringForDebug(std::ostream &os, util::string_view stringIn)
     {
         for(unsigned char ch : stringIn)
@@ -305,59 +116,31 @@ protected:
             }
         }
     }
-    enum class TokenizerMode
+
+private:
+    struct IteratorCopy final
     {
-        Command,
-        CommandWithNames,
-        DoubleQuotes,
-        VariableSubstitution,
-        Arithmetic,
-        Condition,
-        RegEx,
-        RegExCharacterClass,
+        input::TextInput::Iterator value;
+        explicit IteratorCopy(const input::TextInput::Iterator &value) noexcept : value(value)
+        {
+        }
+        operator input::TextInput::Iterator &() noexcept
+        {
+            return value;
+        }
     };
-    Location tokenLocation{};
-    TokenType tokenType = TokenType::EndOfFile;
-    std::string tokenValue{};
-    bool isInitialToken = true;
-
-public:
-    static std::string getTokenDebugString(const Location &tokenLocation,
-                                           TokenType tokenType,
-                                           util::string_view tokenValue)
+    static IteratorCopy copy(const input::TextInput::Iterator &value) noexcept
     {
-        std::ostringstream os;
-        os << tokenLocation << ": " << getTokenTypeName(tokenType) << ": \"";
-        escapeStringForDebug(os, tokenValue);
-        os << "\"";
-        return os.str();
+        return IteratorCopy(value);
     }
 
-protected:
-    std::string getTokenDebugString() const
+private:
+    bool parseBlank(input::TextInput::Iterator &textIter)
     {
-        return getTokenDebugString(tokenLocation, tokenType, tokenValue);
+        if(*textIter == ' ' || *textIter == '\t')
+#error finish
     }
-
-public:
-    TextInput &getTextInput() noexcept
-    {
-        return ti;
-    }
-
-protected:
-    static constexpr bool isBlank(int ch) noexcept
-    {
-        return ch == ' ' || ch == '\t';
-    }
-    static constexpr bool isNewline(int ch) noexcept
-    {
-        return ch == '\n';
-    }
-    static constexpr bool isNewlineOrEOF(int ch) noexcept
-    {
-        return isNewline(ch) || ch == TextInput::eof;
-    }
+#error finish
     static constexpr bool isMetacharacter(int ch) noexcept
     {
         return ch == '|' || ch == '&' || ch == ';' || ch == '(' || ch == ')' || ch == '<'

@@ -17,13 +17,13 @@
 #define INPUT_ISTREAM_H_
 
 #include <iosfwd>
-#include "input.h"
+#include "text_input.h"
 
 namespace quick_shell
 {
 namespace input
 {
-class IStreamInput final : public Input
+class IStreamTextInput final : public TextInput
 {
 private:
     std::istream &is;
@@ -34,11 +34,11 @@ protected:
                              std::size_t bufferSize) override;
 
 public:
-    IStreamInput(std::string name,
-                 const InputStyle &inputStyle,
-                 std::istream &is,
-                 bool retryAfterEOF)
-        : Input(std::move(name), inputStyle, retryAfterEOF), is(is)
+    IStreamTextInput(std::string name,
+                     const TextInputStyle &inputStyle,
+                     std::istream &is,
+                     bool retryAfterEOF)
+        : TextInput(std::move(name), inputStyle, retryAfterEOF), is(is)
     {
     }
 };

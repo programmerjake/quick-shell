@@ -19,7 +19,7 @@
 int main()
 {
     using namespace quick_shell;
-    auto stdInInput = input::makeStdInInput(input::InputStyle(), true);
+    auto stdInInput = input::makeStdInTextInput(input::TextInputStyle(), true);
     int eofCount = 0;
     for(auto i = stdInInput->begin(); i != stdInInput->end(); ++i)
     {

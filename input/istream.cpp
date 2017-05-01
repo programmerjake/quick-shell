@@ -21,9 +21,9 @@ namespace quick_shell
 {
 namespace input
 {
-std::size_t IStreamInput::read(std::size_t startIndex,
-                               unsigned char *buffer,
-                               std::size_t bufferSize)
+std::size_t IStreamTextInput::read(std::size_t startIndex,
+                                   unsigned char *buffer,
+                                   std::size_t bufferSize)
 {
     assert(bufferSize >= 0);
     if(!is.fail() && is.eof())

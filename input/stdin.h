@@ -17,13 +17,14 @@
 #define INPUT_STDIN_H_
 
 #include <memory>
-#include "input.h"
+
+#include "text_input.h"
 
 namespace quick_shell
 {
 namespace input
 {
-std::unique_ptr<Input> makeStdInInput(const InputStyle &inputStyle, bool retryAfterEOF);
+std::unique_ptr<TextInput> makeStdInTextInput(const TextInputStyle &inputStyle, bool retryAfterEOF);
 bool isStdInATerminal() noexcept;
 }
 }

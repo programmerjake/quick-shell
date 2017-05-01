@@ -17,6 +17,8 @@
 #define AST_WORD_PART_H_
 
 #include <string>
+#include <cassert>
+#include <utility>
 #include "ast_base.h"
 #include "../util/string_view.h"
 #include "../util/compiler_intrinsics.h"
@@ -27,6 +29,7 @@ namespace ast
 {
 struct WordPart : public ASTBase<WordPart>
 {
+    using ASTBase<WordPart>::ASTBase;
     enum class QuoteKind
     {
         Unquoted,
@@ -80,14 +83,45 @@ struct WordPart : public ASTBase<WordPart>
         return getQuoteSuffix(getQuoteKind());
     }
     virtual QuoteKind getQuoteKind() const noexcept = 0;
+    enum class QuotePart
+    {
+        Start,
+        Stop,
+        Other,
+    };
+    virtual QuotePart getQuotePart() const noexcept
+    {
+        return QuotePart::Other;
+    }
+};
+
+struct GenericQuoteWordPart : public WordPart
+{
+    using WordPart::WordPart;
+};
+
+template <bool isStart, WordPart::QuoteKind quoteKind>
+struct QuoteWordPart final : public GenericQuoteWordPart
+{
+    static_assert(quoteKind != QuoteKind::Unquoted, "");
+    using GenericQuoteWordPart::GenericQuoteWordPart;
+    virtual QuotePart getQuotePart() const noexcept override
+    {
+        return isStart ? QuotePart::Start : QuotePart::Stop;
+    }
+    virtual QuoteKind getQuoteKind() const noexcept override
+    {
+        return quoteKind;
+    }
+    virtual util::ArenaPtr<WordPart> duplicate(util::Arena &arena) const override
+    {
+        return arena.allocate<QuoteWordPart>(*this);
+    }
 };
 
 struct GenericTextWordPart : public WordPart
 {
-    std::string value;
-    explicit GenericTextWordPart(std::string value) noexcept : value(std::move(value))
-    {
-    }
+    using WordPart::WordPart;
 };
 
 template <WordPart::QuoteKind quoteKind>

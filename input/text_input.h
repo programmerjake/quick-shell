@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef INPUT_INPUT_H_
-#define INPUT_INPUT_H_
+#ifndef INPUT_TEXT_INPUT_H_
+#define INPUT_TEXT_INPUT_H_
 
 #include <string>
 #include <utility>
@@ -33,40 +33,41 @@ namespace input
 {
 constexpr int eof = std::char_traits<char>::eof();
 
-struct InputStyle final
+struct TextInputStyle final
 {
     static constexpr std::size_t defaultTabSize = 8;
     std::size_t tabSize;
     bool allowCRLFAsNewLine;
     bool allowCRAsNewLine;
     bool allowLFAsNewLine;
-    constexpr explicit InputStyle(std::size_t tabSize,
-                                  bool allowCRLFAsNewLine = false,
-                                  bool allowCRAsNewLine = false,
-                                  bool allowLFAsNewLine = true) noexcept
+    constexpr explicit TextInputStyle(std::size_t tabSize,
+                                      bool allowCRLFAsNewLine = false,
+                                      bool allowCRAsNewLine = false,
+                                      bool allowLFAsNewLine = true) noexcept
         : tabSize(tabSize),
           allowCRLFAsNewLine(allowCRLFAsNewLine),
           allowCRAsNewLine(allowCRAsNewLine),
           allowLFAsNewLine(allowLFAsNewLine)
     {
     }
-    constexpr InputStyle() noexcept : InputStyle(defaultTabSize)
+    constexpr TextInputStyle() noexcept : TextInputStyle(defaultTabSize)
     {
     }
 };
 
-constexpr bool isNewLine(int ch, const InputStyle &inputStyle) noexcept
+constexpr bool isNewLine(int ch, const TextInputStyle &inputStyle) noexcept
 {
     return (inputStyle.allowCRAsNewLine ? ch == '\r' : false)
            || (inputStyle.allowLFAsNewLine ? ch == '\n' : false);
 }
 
-constexpr bool isNewLinePair(int ch1, int ch2, const InputStyle &inputStyle) noexcept
+constexpr bool isNewLinePair(int ch1, int ch2, const TextInputStyle &inputStyle) noexcept
 {
     return inputStyle.allowCRLFAsNewLine ? ch1 == '\r' && ch2 == '\n' : false;
 }
 
-constexpr std::size_t getColumnAfterTab(std::size_t column, const InputStyle &inputStyle) noexcept
+constexpr std::size_t getColumnAfterTab(std::size_t column,
+                                        const TextInputStyle &inputStyle) noexcept
 {
     return inputStyle.tabSize == 0 || column == 0 ?
                column + 1 :
@@ -102,10 +103,10 @@ struct LineAndIndex final
     }
 };
 
-class Input
+class TextInput
 {
-    Input(const Input &) = delete;
-    Input &operator=(const Input &) = delete;
+    TextInput(const TextInput &) = delete;
+    TextInput &operator=(const TextInput &) = delete;
 
 public:
     /** number of character positions an EOF takes */
@@ -205,7 +206,7 @@ private:
     };
 
 private:
-    InputStyle inputStyle;
+    TextInputStyle inputStyle;
     std::string name;
     std::vector<Chunk> chunks;
     std::size_t validMemorySize;
@@ -245,12 +246,12 @@ private:
     void updateLineStartIndexesHelper(Fn &&fn);
 
 public:
-    explicit Input(std::string name,
-                   const InputStyle &inputStyle,
-                   std::shared_ptr<const unsigned char> memory,
-                   std::size_t memorySize,
-                   std::set<std::size_t> eofPositions,
-                   bool retryAfterEOF)
+    explicit TextInput(std::string name,
+                       const TextInputStyle &inputStyle,
+                       std::shared_ptr<const unsigned char> memory,
+                       std::size_t memorySize,
+                       std::set<std::size_t> eofPositions,
+                       bool retryAfterEOF)
         : retryAfterEOF(retryAfterEOF),
           inputStyle(inputStyle),
           name(std::move(name)),
@@ -277,11 +278,11 @@ public:
             chunks.push_back(std::move(lastChunk));
         }
     }
-    explicit Input(std::string name, const InputStyle &inputStyle, bool retryAfterEOF)
-        : Input(std::move(name), inputStyle, nullptr, 0, std::set<std::size_t>(), retryAfterEOF)
+    explicit TextInput(std::string name, const TextInputStyle &inputStyle, bool retryAfterEOF)
+        : TextInput(std::move(name), inputStyle, nullptr, 0, std::set<std::size_t>(), retryAfterEOF)
     {
     }
-    virtual ~Input() = default;
+    virtual ~TextInput() = default;
     const std::string &getName() const noexcept
     {
         return name;
@@ -294,11 +295,11 @@ public:
     {
         name = newName;
     }
-    const InputStyle &getInputStyle() const noexcept
+    const TextInputStyle &getInputStyle() const noexcept
     {
         return inputStyle;
     }
-    void setInputStyle(const InputStyle &newInputStyle)
+    void setInputStyle(const TextInputStyle &newInputStyle)
     {
         inputStyle = newInputStyle;
         lineStartIndexes.clear();
@@ -358,14 +359,14 @@ public:
         typedef std::input_iterator_tag iterator_category;
 
     private:
-        friend class Input;
-        Input *input;
+        friend class TextInput;
+        TextInput *input;
         std::size_t nextSpecialIndexAfter;
         std::size_t index;
         int value;
 
     private:
-        Iterator(Input *input, std::size_t index)
+        Iterator(TextInput *input, std::size_t index)
             : input(input), nextSpecialIndexAfter(), index(index), value(input->operator[](index))
         {
             if(value == eof && !input->retryAfterEOF)
@@ -395,7 +396,7 @@ public:
         {
             if(!input)
             {
-            	value = eof;
+                value = eof;
                 index = 0;
                 nextSpecialIndexAfter = 0;
                 return *this;
@@ -405,7 +406,7 @@ public:
             if(index == nextSpecialIndexAfter)
                 *this = Iterator(input, index);
             else
-            	value = input->readNonspecial(index);
+                value = input->readNonspecial(index);
             return *this;
         }
         Iterator operator++(int)
@@ -497,8 +498,12 @@ public:
     {
         return getLocation(i.getIndex());
     }
+    LocationSpan getLocationSpan(std::size_t beginIndex, std::size_t endIndex) noexcept
+    {
+        return LocationSpan(beginIndex, endIndex, this);
+    }
 };
 }
 }
 
-#endif /* INPUT_INPUT_H_ */
+#endif /* INPUT_TEXT_INPUT_H_ */

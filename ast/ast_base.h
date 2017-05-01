@@ -16,7 +16,10 @@
 #ifndef AST_AST_BASE_H_
 #define AST_AST_BASE_H_
 
+#include <string>
+#include <utility>
 #include "../util/arena.h"
+#include "../input/location.h"
 
 namespace quick_shell
 {
@@ -25,13 +28,24 @@ namespace ast
 template <typename T>
 struct ASTBase
 {
+    input::LocationSpan location;
     ASTBase(const ASTBase &) = default;
     ASTBase(ASTBase &&) = delete;
     ASTBase &operator=(const ASTBase &) = delete;
     ASTBase &operator=(ASTBase &&) = delete;
-    ASTBase() = default;
+    explicit ASTBase(const input::LocationSpan &location) noexcept : location(location)
+    {
+    }
     virtual ~ASTBase() = default;
     virtual util::ArenaPtr<T> duplicate(util::Arena &arena) const = 0;
+    std::string getSourceText(std::string bufferSource) const
+    {
+        return location.getTextInputText(std::move(bufferSource));
+    }
+    std::string getSourceText() const
+    {
+        return location.getTextInputText();
+    }
 };
 }
 }

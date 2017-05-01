@@ -17,12 +17,13 @@
 #define INPUT_LOCATION_H_
 
 #include <iosfwd>
+#include <string>
 
 namespace quick_shell
 {
 namespace input
 {
-struct Input;
+struct TextInput;
 
 struct SimpleLocation
 {
@@ -36,32 +37,120 @@ struct SimpleLocation
     friend std::ostream &operator<<(std::ostream &os, const SimpleLocation &v);
 };
 
+struct SimpleLocationSpan
+{
+    /** inclusive */
+    std::size_t beginIndex;
+    /** exclusive */
+    std::size_t endIndex;
+    constexpr SimpleLocationSpan() noexcept : beginIndex(0), endIndex(0)
+    {
+    }
+    constexpr SimpleLocationSpan(std::size_t beginIndex, std::size_t endIndex) noexcept
+        : beginIndex(beginIndex),
+          endIndex(endIndex)
+    {
+    }
+    constexpr std::size_t size() const noexcept
+    {
+        return endIndex - beginIndex;
+    }
+    constexpr SimpleLocation begin() const noexcept
+    {
+        return SimpleLocation(beginIndex);
+    }
+    constexpr SimpleLocation back() const noexcept
+    {
+        return SimpleLocation(endIndex - 1);
+    }
+    constexpr SimpleLocation end() const noexcept
+    {
+        return SimpleLocation(endIndex);
+    }
+    constexpr operator SimpleLocation() const noexcept
+    {
+        return begin();
+    }
+    friend std::ostream &operator<<(std::ostream &os, const SimpleLocationSpan &v);
+};
+
 struct Location : public SimpleLocation
 {
-    Input *input;
+    TextInput *input;
     constexpr Location() noexcept : SimpleLocation(), input()
     {
     }
-    constexpr Location(std::size_t index, Input *input) noexcept : SimpleLocation(index),
-                                                                   input(input)
+    constexpr Location(std::size_t index, TextInput *input) noexcept : SimpleLocation(index),
+                                                                       input(input)
     {
     }
-    constexpr Location(std::size_t index, Input &input) noexcept : SimpleLocation(index),
-                                                                   input(&input)
+    constexpr Location(std::size_t index, TextInput &input) noexcept : SimpleLocation(index),
+                                                                       input(&input)
     {
     }
-    constexpr explicit Location(Input *input) noexcept : SimpleLocation(), input(input)
+    constexpr explicit Location(TextInput *input) noexcept : SimpleLocation(), input(input)
     {
     }
-    constexpr explicit Location(Input &input) noexcept : SimpleLocation(), input(&input)
+    constexpr explicit Location(TextInput &input) noexcept : SimpleLocation(), input(&input)
     {
     }
-    constexpr Location(const SimpleLocation &locationInInput, Input *input) noexcept
+    constexpr Location(const SimpleLocation &locationInInput, TextInput *input) noexcept
         : SimpleLocation(locationInInput),
           input(input)
     {
     }
     friend std::ostream &operator<<(std::ostream &os, const Location &v);
+};
+
+struct LocationSpan : public SimpleLocationSpan
+{
+    TextInput *input;
+    constexpr LocationSpan() noexcept : SimpleLocationSpan(), input()
+    {
+    }
+    constexpr LocationSpan(std::size_t beginIndex, std::size_t endIndex, TextInput *input) noexcept
+        : SimpleLocationSpan(beginIndex, endIndex),
+          input(input)
+    {
+    }
+    constexpr LocationSpan(std::size_t beginIndex, std::size_t endIndex, TextInput &input) noexcept
+        : SimpleLocationSpan(beginIndex, endIndex),
+          input(&input)
+    {
+    }
+    constexpr explicit LocationSpan(TextInput *input) noexcept : SimpleLocationSpan(), input(input)
+    {
+    }
+    constexpr explicit LocationSpan(TextInput &input) noexcept : SimpleLocationSpan(), input(&input)
+    {
+    }
+    constexpr LocationSpan(const SimpleLocationSpan &locationSpanInInput, TextInput *input) noexcept
+        : SimpleLocationSpan(locationSpanInInput),
+          input(input)
+    {
+    }
+    constexpr Location begin() const noexcept
+    {
+        return Location(beginIndex, input);
+    }
+    constexpr Location back() const noexcept
+    {
+        return Location(endIndex - 1, input);
+    }
+    constexpr Location end() const noexcept
+    {
+        return Location(endIndex, input);
+    }
+    constexpr operator Location() const noexcept
+    {
+        return begin();
+    }
+    std::string getTextInputText(std::string bufferSource, char replacementForEOF = '\0') const;
+    std::string getTextInputText(char replacementForEOF = '\0') const
+    {
+        return getTextInputText(std::string(), replacementForEOF);
+    }
+    friend std::ostream &operator<<(std::ostream &os, const LocationSpan &v);
 };
 }
 }

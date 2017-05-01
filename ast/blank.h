@@ -13,12 +13,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "text_input.h"
+#ifndef AST_BLANK_H_
+#define AST_BLANK_H_
+
+#include <cassert>
+#include "ast_base.h"
 
 namespace quick_shell
 {
-namespace parser
+namespace ast
 {
-constexpr int TextInput::eof;
+struct BlankOrEmpty : public ASTBase<BlankOrEmpty>
+{
+    using ASTBase<BlankOrEmpty>::ASTBase;
+    bool isEmpty() noexcept
+    {
+        return location.size() == 0;
+    }
+};
+
+struct Blank final : public BlankOrEmpty
+{
+    explicit Blank(const input::LocationSpan &location) noexcept : BlankOrEmpty(location)
+    {
+    	assert(!isEmpty());
+    }
+};
 }
 }
+
+#endif /* AST_BLANK_H_ */
