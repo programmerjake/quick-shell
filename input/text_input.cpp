@@ -88,15 +88,14 @@ void TextInput::updateLineStartIndexesHelper(Fn &&fn)
         int ch = *iter;
         if(i + 1 < validMemorySize)
         {
-            ++iter;
-            int ch2 = *iter;
+            int ch2 = *++iter;
             if(isNewLinePair(ch, ch2, inputStyle))
             {
                 fn(i + 2);
                 continue;
             }
         }
-        if(isNewLine(ch, inputStyle))
+        if(isNewLine(ch, inputStyle) || ch == eof)
             fn(i + 1);
     }
     assert(validMemorySize == endIndex); // verify that we haven't read any more

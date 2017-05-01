@@ -99,6 +99,11 @@ struct Location : public SimpleLocation
           input(input)
     {
     }
+    constexpr Location(const SimpleLocation &locationInInput, TextInput &input) noexcept
+        : SimpleLocation(locationInInput),
+          input(&input)
+    {
+    }
     friend std::ostream &operator<<(std::ostream &os, const Location &v);
 };
 
@@ -127,6 +132,11 @@ struct LocationSpan : public SimpleLocationSpan
     constexpr LocationSpan(const SimpleLocationSpan &locationSpanInInput, TextInput *input) noexcept
         : SimpleLocationSpan(locationSpanInInput),
           input(input)
+    {
+    }
+    constexpr LocationSpan(const SimpleLocationSpan &locationSpanInInput, TextInput &input) noexcept
+        : SimpleLocationSpan(locationSpanInInput),
+          input(&input)
     {
     }
     constexpr Location begin() const noexcept

@@ -228,14 +228,17 @@ private:
     }
     std::size_t getNextSpecialIndex(std::size_t index) const
     {
-        if(index >= validMemorySize)
-            return index;
-        std::size_t nextEOF = getNextEOF(index);
-        if(nextEOF < validMemorySize)
-            return nextEOF;
-        return validMemorySize;
+        std::size_t retval = getNextEOF(index);
+        if(retval > validMemorySize)
+            retval = validMemorySize;
+        std::size_t nextChunkStartIndex = (index / chunkSize) * chunkSize + chunkSize;
+        if(retval > nextChunkStartIndex)
+            retval = nextChunkStartIndex;
+        if(retval < index)
+            retval = index;
+        return retval;
     }
-    unsigned char readNonspecial(std::size_t index) const noexcept
+    unsigned char &readNonspecial(std::size_t index) const noexcept
     {
         assert(index < validMemorySize);
         return chunks[index / chunkSize][index % chunkSize];
@@ -278,6 +281,41 @@ public:
             chunks.push_back(std::move(lastChunk));
         }
     }
+    explicit TextInput(std::string name,
+                       const TextInputStyle &inputStyle,
+                       const unsigned char *memory,
+                       std::size_t memorySize,
+                       std::set<std::size_t> eofPositions,
+                       bool retryAfterEOF)
+        : retryAfterEOF(retryAfterEOF),
+          inputStyle(inputStyle),
+          name(std::move(name)),
+          chunks(),
+          validMemorySize(memorySize),
+          eofPositions(std::move(eofPositions)),
+          lineStartIndexes(),
+          validLineStartIndexesIndex()
+    {
+        assert(memorySize == 0 || memory != nullptr);
+        chunks.reserve((memorySize + chunkSize - 1) / chunkSize);
+        for(std::size_t i = 0; i + 1 < memorySize / chunkSize; i++)
+        {
+        	auto chunk = Chunk(AllocateTag{});
+        	const unsigned char *source = memory + i * chunkSize;
+        	for(std::size_t j = 0; j < chunkSize;j++)
+        		chunk[i] = source[i];
+            chunks.push_back(std::move(chunk));
+        }
+        std::size_t sizeLeft = memorySize % chunkSize;
+        if(sizeLeft)
+        {
+            auto lastChunk = Chunk(AllocateTag{});
+            const unsigned char *source = memory + chunks.size() * chunkSize;
+            for(std::size_t i = 0; i < sizeLeft; i++)
+                lastChunk[i] = source[i];
+            chunks.push_back(std::move(lastChunk));
+        }
+    }
     explicit TextInput(std::string name, const TextInputStyle &inputStyle, bool retryAfterEOF)
         : TextInput(std::move(name), inputStyle, nullptr, 0, std::set<std::size_t>(), retryAfterEOF)
     {
@@ -312,17 +350,15 @@ public:
             if(!retryAfterEOF && !eofPositions.empty() && index >= *eofPositions.begin())
             {
                 updateLineStartIndexes();
-                return lineStartIndexes.empty() ?
-                           LineAndIndex(1, 0) :
-                           LineAndIndex(lineStartIndexes.size() + 1, lineStartIndexes.back());
+                std::size_t lastLineStart = lineStartIndexes.empty() ? 0 : lineStartIndexes.back();
+                return LineAndIndex(lineStartIndexes.size() + 1 + index - lastLineStart, index);
             }
             readTo(index);
             if(index >= validMemorySize)
             {
                 updateLineStartIndexes();
-                return lineStartIndexes.empty() ?
-                           LineAndIndex(1, 0) :
-                           LineAndIndex(lineStartIndexes.size() + 1, lineStartIndexes.back());
+                std::size_t lastLineStart = lineStartIndexes.empty() ? 0 : lineStartIndexes.back();
+                return LineAndIndex(lineStartIndexes.size() + 1 + index - lastLineStart, index);
             }
         }
         if(index >= validLineStartIndexesIndex)
@@ -351,6 +387,8 @@ public:
     }
     class Iterator final
     {
+        friend class TextInput;
+
     public:
         typedef std::ptrdiff_t difference_type;
         typedef int value_type;
@@ -359,54 +397,70 @@ public:
         typedef std::input_iterator_tag iterator_category;
 
     private:
-        friend class TextInput;
+        static constexpr int invalidValue = (eof == -1 ? -2 : -1);
+
+    private:
         TextInput *input;
-        std::size_t nextSpecialIndexAfter;
         std::size_t index;
+        const unsigned char *rangeCurrent;
+        const unsigned char *rangeEnd;
         int value;
 
     private:
-        Iterator(TextInput *input, std::size_t index)
-            : input(input), nextSpecialIndexAfter(), index(index), value(input->operator[](index))
+        void getValue()
         {
-            if(value == eof && !input->retryAfterEOF)
+            if(rangeCurrent != rangeEnd)
+                value = *rangeCurrent;
+            else
+                value = input->operator[](index);
+        }
+
+    private:
+        Iterator(TextInput *input, std::size_t index)
+            : input(input), index(index), rangeCurrent(), rangeEnd(), value(invalidValue)
+        {
+            std::size_t nextSpecialIndex = input->getNextSpecialIndex(index);
+            if(nextSpecialIndex > index)
             {
-                input = nullptr;
-                nextSpecialIndexAfter = index + 1;
+                rangeCurrent = &input->readNonspecial(index);
+                rangeEnd = &input->readNonspecial(nextSpecialIndex - 1) + 1;
+                value = *rangeCurrent;
             }
             else
             {
-                nextSpecialIndexAfter = input->getNextSpecialIndex(index + 1);
+                rangeCurrent = nullptr;
+                rangeEnd = nullptr;
             }
         }
 
     public:
-        Iterator() noexcept : input(nullptr), nextSpecialIndexAfter(0), index(0), value(eof)
+        Iterator() noexcept : input(nullptr),
+                              index(-1),
+                              rangeCurrent(nullptr),
+                              rangeEnd(nullptr),
+                              value(eof)
         {
         }
-        const int *operator->() const noexcept
+        const int *operator->()
         {
+            if(value == invalidValue)
+                getValue();
             return &value;
         }
-        const int &operator*() const noexcept
+        const int &operator*()
         {
+            if(value == invalidValue)
+                getValue();
             return value;
         }
         Iterator &operator++()
         {
-            if(!input)
-            {
-                value = eof;
-                index = 0;
-                nextSpecialIndexAfter = 0;
-                return *this;
-            }
+            assert(input);
             index++;
-            assert(index != static_cast<std::size_t>(-1));
-            if(index == nextSpecialIndexAfter)
+            if(rangeCurrent == rangeEnd || rangeCurrent == rangeEnd - 1)
                 *this = Iterator(input, index);
             else
-                value = input->readNonspecial(index);
+                value = *++rangeCurrent;
             return *this;
         }
         Iterator operator++(int)
@@ -417,19 +471,15 @@ public:
         }
         bool operator==(const Iterator &rt) const noexcept
         {
-            return input == rt.input && index == rt.index;
+            return index == rt.index;
         }
         bool operator!=(const Iterator &rt) const noexcept
         {
-            return input != rt.input || index != rt.index;
+            return index != rt.index;
         }
         std::size_t getIndex() const noexcept
         {
-            if(input)
-                return index;
-            if(nextSpecialIndexAfter)
-                return index;
-            return static_cast<std::size_t>(-1);
+            return index;
         }
     };
     Iterator begin()

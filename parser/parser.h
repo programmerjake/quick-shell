@@ -135,17 +135,209 @@ private:
     }
 
 private:
-    bool parseBlank(input::TextInput::Iterator &textIter)
+    struct ParseResult final
     {
-        if(*textIter == ' ' || *textIter == '\t')
-#error finish
+        union GenerateParseErrorFnArgument final
+        {
+            void *object;
+            void (*function)();
+            constexpr GenerateParseErrorFnArgument(void *object = nullptr) noexcept : object(object)
+            {
+            }
+            constexpr GenerateParseErrorFnArgument(void (*function)()) noexcept : function(function)
+            {
+            }
+        };
+        typedef void (*GenerateParseErrorFn)(Parser &parser,
+                                             input::SimpleLocation location,
+                                             GenerateParseErrorFnArgument argument);
+        GenerateParseErrorFn function;
+        input::SimpleLocation location;
+        GenerateParseErrorFnArgument argument;
+        constexpr ParseResult() noexcept : function(nullptr), location(), argument()
+        {
+        }
+        constexpr explicit ParseResult(
+            GenerateParseErrorFn function,
+            input::SimpleLocation location = input::SimpleLocation(),
+            GenerateParseErrorFnArgument argument = GenerateParseErrorFnArgument()) noexcept
+            : function(function),
+              argument(argument)
+        {
+        }
+        explicit ParseResult(void (*function)(Parser &parser, input::SimpleLocation location),
+                             input::SimpleLocation location) noexcept
+            : function([](Parser &parser,
+                          input::SimpleLocation location,
+                          GenerateParseErrorFnArgument argument)
+                       {
+                           reinterpret_cast<void (*)(Parser &, input::SimpleLocation location)>(
+                               argument.function)(parser, location);
+                           UNREACHABLE();
+                       }),
+              argument(reinterpret_cast<void (*)()>(function))
+        {
+        }
+        explicit ParseResult(void (*function)(Parser &parser, input::Location location),
+                             input::SimpleLocation location) noexcept
+            : function([](Parser &parser,
+                          input::SimpleLocation location,
+                          GenerateParseErrorFnArgument argument)
+                       {
+                           reinterpret_cast<void (*)(Parser &, input::Location location)>(
+                               argument.function)(parser,
+                                                  input::Location(location, parser.textInput));
+                           UNREACHABLE();
+                       }),
+              argument(reinterpret_cast<void (*)()>(function))
+        {
+        }
+        explicit ParseResult(void (*function)(input::Location location),
+                             input::SimpleLocation location) noexcept
+            : function([](Parser &parser,
+                          input::SimpleLocation location,
+                          GenerateParseErrorFnArgument argument)
+                       {
+                           reinterpret_cast<void (*)(input::Location location)>(argument.function)(
+                               input::Location(location, parser.textInput));
+                           UNREACHABLE();
+                       }),
+              argument(reinterpret_cast<void (*)()>(function))
+        {
+        }
+        explicit ParseResult(void (*function)(input::SimpleLocation location),
+                             input::SimpleLocation location) noexcept
+            : function([](Parser &parser,
+                          input::SimpleLocation location,
+                          GenerateParseErrorFnArgument argument)
+                       {
+                           reinterpret_cast<void (*)(input::Location location)>(argument.function)(
+                               location);
+                           UNREACHABLE();
+                       }),
+              argument(reinterpret_cast<void (*)()>(function))
+        {
+        }
+        explicit ParseResult(void (*function)(input::SimpleLocation location),
+                             input::SimpleLocation location) noexcept
+            : function([](Parser &parser,
+                          input::SimpleLocation location,
+                          GenerateParseErrorFnArgument argument)
+                       {
+                           reinterpret_cast<void (*)(input::Location location)>(argument.function)(
+                               location);
+                           UNREACHABLE();
+                       }),
+              argument(reinterpret_cast<void (*)()>(function))
+        {
+        }
+        constexpr bool isSuccess() const noexcept
+        {
+            return function == nullptr;
+        }
+        constexpr bool isError() const noexcept
+        {
+            return function != nullptr;
+        }
+        void throwError(Parser &parser) const
+        {
+            assert(function);
+            function(parser, location, argument);
+            UNREACHABLE();
+        }
+        constexpr explicit operator bool() const noexcept
+        {
+            return isSuccess();
+        }
+    };
+    template <typename... Args>
+    ParseResult parserError(Args &&... args) noexcept(
+        noexcept(ParseResult(std::forward<Args>(args)...)))
+    {
+        return ParseResult(std::forward<Args>(args)...);
+    }
+    template <std::size_t N>
+    ParseResult parserErrorStaticString(const char(&message)[N],
+                                        input::SimpleLocation location) noexcept
+    {
+        return ParseResult(
+            [](Parser &parser,
+               input::SimpleLocation location,
+               ParseResult::GenerateParseErrorFnArgument argument)
+            {
+                throw ParseError(input::Location(location, parser.textInput),
+                                 static_cast<const char *>(argument.object));
+            },
+            location,
+            static_cast<void *>(const_cast<char *>(message)));
+    }
+    template <std::size_t N>
+    ParseResult parserErrorStaticString(const char(&message)[N],
+                                        const input::TextInput::Iterator &iter) noexcept
+    {
+        return parserErrorStaticString(message, input::SimpleLocation(iter.getIndex()));
+    }
+    constexpr ParseResult parserSuccess() noexcept
+    {
+        return ParseResult();
+    }
+
+private:
+    ParseResult parseBlank(input::TextInput::Iterator &textIter)
+    {
+        switch(*textIter)
+        {
+        case ' ':
+        case '\t':
+            ++textIter;
+            return parserSuccess();
+        default:
+            return parserErrorStaticString("missing blank", textIter);
+        }
+    }
+    ParseResult parseMetacharacter(input::TextInput::Iterator &textIter)
+    {
+        switch(*textIter)
+        {
+        case '|':
+        case '&':
+        case ';':
+        case '(':
+        case ')':
+        case '<':
+        case '>':
+            ++textIter;
+            return parserSuccess();
+        default:
+        {
+            auto textIter2 = textIter;
+            auto retval = parseBlank(textIter2);
+            if(retval)
+            {
+            	textIter = textIter2;
+                return retval;
+            }
+            textIter2 = textIter;
+            auto retval = parseBlank(textIter2);
+            if(retval)
+            {
+            	textIter = textIter2;
+                return retval;
+            }
+            return parserErrorStaticString("missing metacharacter", textIter);
+        }
+        }
+    }
+    ParseResult parseMetacharacterOrEOF(input::TextInput::Iterator &textIter)
+    {
+    	if(*textIter == input::eof)
+        {
+            ++textIter;
+            return parserSuccess();
+        }
+    	return parseMetacharacter(textIter);
     }
 #error finish
-    static constexpr bool isMetacharacter(int ch) noexcept
-    {
-        return ch == '|' || ch == '&' || ch == ';' || ch == '(' || ch == ')' || ch == '<'
-               || ch == '>' || isBlank(ch) || isNewline(ch);
-    }
     static constexpr bool isMetacharacterOrEOF(int ch) noexcept
     {
         return isMetacharacter(ch) || ch == TextInput::eof;

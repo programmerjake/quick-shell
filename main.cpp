@@ -14,25 +14,27 @@
  * limitations under the License.
  */
 #include "input/stdin.h"
+#include "input/memory.h"
 #include <iostream>
+#include <sstream>
 
 int main()
 {
     using namespace quick_shell;
     auto stdInInput = input::makeStdInTextInput(input::TextInputStyle(), true);
-    int eofCount = 0;
-    for(auto i = stdInInput->begin(); i != stdInInput->end(); ++i)
+#if 0
+    auto &ti = *stdInInput;
+#else
+    input::MemoryTextInput ti("builtin", input::TextInputStyle(), "abcdefgh\ni\njk\tmn");
+#endif
+    for(auto i = ti.begin(); i != ti.end(); ++i)
     {
         int ch = *i;
-        if(ch == input::eof)
-        {
-            eofCount++;
-            if(eofCount > 5)
-                break;
-        }
-        std::cout << "\n" << stdInInput->getLocation(i) << " " << ch;
+        std::cout << "\n" << ti.getLocation(i) << " " << ch;
         if(ch >= 0x20 && ch < 0x7F)
             std::cout << ' ' << static_cast<char>(ch);
         std::cout << std::endl;
+        if(ch == input::eof)
+            break;
     }
 }
