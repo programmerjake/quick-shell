@@ -21,10 +21,17 @@
 #include <sstream>
 #include <vector>
 #include <stdexcept>
+#include <algorithm>
+#include <tuple>
 #include "../util/compiler_intrinsics.h"
 #include "../input/text_input.h"
 #include "../input/location.h"
 #include "../util/variant.h"
+#include "../util/string_view.h"
+#include "../ast/blank.h"
+#include "../ast/word.h"
+#include "../ast/word_part.h"
+#include "../util/arena.h"
 
 namespace quick_shell
 {
@@ -55,6 +62,153 @@ enum class ParseCommandResult
     Quit,
 };
 
+enum class ReservedWord
+{
+    ExMark, // "!"
+    DoubleLBracket, // "[["
+    DoubleRBracket, // "]]"
+    Case, // "case"
+    Coproc, // "coproc"
+    Do, // "do"
+    Done, // "done"
+    ElIf, // "elif"
+    Else, // "else"
+    Esac, // "esac"
+    Fi, // "fi"
+    For, // "for"
+    Function, // "function"
+    If, // "if"
+    In, // "in"
+    Select, // "select"
+    Then, // "then"
+    Time, // "time"
+    Until, // "until"
+    While, // "while"
+    LBrace, // "{"
+    RBrace, // "}"
+};
+
+inline util::string_view getReservedWordString(ReservedWord v) noexcept
+{
+    switch(v)
+    {
+    case ReservedWord::ExMark:
+        return "!";
+    case ReservedWord::DoubleLBracket:
+        return "[[";
+    case ReservedWord::DoubleRBracket:
+        return "]]";
+    case ReservedWord::Case:
+        return "case";
+    case ReservedWord::Coproc:
+        return "coproc";
+    case ReservedWord::Do:
+        return "do";
+    case ReservedWord::Done:
+        return "done";
+    case ReservedWord::ElIf:
+        return "elif";
+    case ReservedWord::Else:
+        return "else";
+    case ReservedWord::Esac:
+        return "esac";
+    case ReservedWord::Fi:
+        return "fi";
+    case ReservedWord::For:
+        return "for";
+    case ReservedWord::Function:
+        return "function";
+    case ReservedWord::If:
+        return "if";
+    case ReservedWord::In:
+        return "in";
+    case ReservedWord::Select:
+        return "select";
+    case ReservedWord::Time:
+        return "time";
+    case ReservedWord::Then:
+        return "then";
+    case ReservedWord::Until:
+        return "until";
+    case ReservedWord::While:
+        return "while";
+    case ReservedWord::LBrace:
+        return "{";
+    case ReservedWord::RBrace:
+        return "}";
+    }
+    UNREACHABLE();
+    return "";
+}
+
+inline util::variant<ReservedWord> stringToReservedWord(util::string_view v) noexcept
+{
+    struct StringAndReservedWord
+    {
+        util::string_view string;
+        ReservedWord reservedWord;
+        constexpr StringAndReservedWord(util::string_view string,
+                                        ReservedWord reservedWord) noexcept
+            : string(string),
+              reservedWord(reservedWord)
+        {
+        }
+    };
+    struct Comparer
+    {
+        bool operator()(StringAndReservedWord a, StringAndReservedWord b) const noexcept
+        {
+            return a.string < b.string;
+        }
+        bool operator()(util::string_view a, StringAndReservedWord b) const noexcept
+        {
+            return a < b.string;
+        }
+        bool operator()(StringAndReservedWord a, util::string_view b) const noexcept
+        {
+            return a.string < b;
+        }
+        bool operator()(util::string_view a, util::string_view b) const noexcept
+        {
+            return a < b;
+        }
+    };
+    static const StringAndReservedWord mappingTable[] = {
+        {"!", ReservedWord::ExMark},
+        {"[[", ReservedWord::DoubleLBracket},
+        {"]]", ReservedWord::DoubleRBracket},
+        {"case", ReservedWord::Case},
+        {"coproc", ReservedWord::Coproc},
+        {"do", ReservedWord::Do},
+        {"done", ReservedWord::Done},
+        {"elif", ReservedWord::ElIf},
+        {"else", ReservedWord::Else},
+        {"esac", ReservedWord::Esac},
+        {"fi", ReservedWord::Fi},
+        {"for", ReservedWord::For},
+        {"function", ReservedWord::Function},
+        {"if", ReservedWord::If},
+        {"in", ReservedWord::In},
+        {"select", ReservedWord::Select},
+        {"then", ReservedWord::Then},
+        {"time", ReservedWord::Time},
+        {"until", ReservedWord::Until},
+        {"while", ReservedWord::While},
+        {"{", ReservedWord::LBrace},
+        {"}", ReservedWord::RBrace},
+    };
+    static const bool isSorted =
+        std::is_sorted(std::begin(mappingTable), std::end(mappingTable), Comparer());
+    assert(isSorted);
+    auto results =
+        std::equal_range(std::begin(mappingTable), std::end(mappingTable), v, Comparer());
+    auto *first = std::get<0>(results);
+    auto *last = std::get<1>(results);
+    if(first == last)
+        return util::variant<ReservedWord>();
+    return util::variant<ReservedWord>(first->reservedWord);
+}
+
 class Parser final
 {
     Parser(const Parser &) = delete;
@@ -62,9 +216,11 @@ class Parser final
 
 public:
     input::TextInput &textInput;
+    util::Arena &arena;
 
 public:
-    explicit Parser(input::TextInput &textInput) : textInput(textInput)
+    explicit Parser(input::TextInput &textInput, util::Arena &arena)
+        : textInput(textInput), arena(arena)
     {
     }
 
@@ -410,7 +566,7 @@ private:
         }
         return parserErrorStaticString("missing name continue character", textIter);
     }
-    ParseResult<> parseWordStartCharacter(input::TextInput::Iterator &textIter)
+    ParseResult<> parseSimpleWordStartCharacter(input::TextInput::Iterator &textIter)
     {
         switch(*textIter)
         {
@@ -429,76 +585,108 @@ private:
                 return parserSuccess();
             }
         }
-        return parserErrorStaticString("missing word start character", textIter);
+        return parserErrorStaticString("missing unquoted word start character", textIter);
     }
-    ParseResult<> parseWordContinueCharacter(input::TextInput::Iterator &textIter)
+    ParseResult<> parseSimpleWordContinueCharacter(input::TextInput::Iterator &textIter)
     {
-        if(parseWordStartCharacter(copy(textIter)) || *textIter == '#')
+        if(parseSimpleWordStartCharacter(copy(textIter)) || *textIter == '#')
         {
             ++textIter;
             return parserSuccess();
         }
-        return parserErrorStaticString("missing word continue character", textIter);
+        return parserErrorStaticString("missing unquoted word continue character", textIter);
     }
-
-private:
-#error finish
-    void tokenizeReservedWord()
+    ParseResult<> parseWordStartCharacter(input::TextInput::Iterator &textIter,
+                                          bool isInsideBackquotes)
     {
-        auto oldTokenType = tokenType;
-        tokenType = tokenizeReservedWord(tokenType, tokenValue);
-        if(tokenType != oldTokenType && debugOutput)
+        switch(*textIter)
         {
-            *debugOutput << getTokenDebugString() << std::endl;
-        }
-    }
-    static TokenType tokenizeReservedWord(TokenType type, util::string_view value) noexcept
-    {
-        assert(type == TokenType::UnquotedWordPart || type == TokenType::Name);
-        struct ReservedWord
-        {
-            TokenType tokenType;
-            util::string_view word;
-        };
-        static const ReservedWord reservedWords[] = {
-            {TokenType::ExMark, "!"},
-            {TokenType::LBrace, "{"},
-            {TokenType::RBrace, "}"},
-            {TokenType::DoubleLBracket, "[["},
-            {TokenType::DoubleRBracket, "]]"},
-            {TokenType::Case, "case"},
-            {TokenType::Coproc, "coproc"},
-            {TokenType::Do, "do"},
-            {TokenType::Done, "done"},
-            {TokenType::ElIf, "elif"},
-            {TokenType::Else, "else"},
-            {TokenType::Esac, "esac"},
-            {TokenType::Fi, "fi"},
-            {TokenType::For, "for"},
-            {TokenType::Function, "function"},
-            {TokenType::If, "if"},
-            {TokenType::In, "in"},
-            {TokenType::Select, "select"},
-            {TokenType::Time, "time"},
-            {TokenType::Then, "then"},
-            {TokenType::Until, "until"},
-            {TokenType::While, "while"},
-        };
-        for(auto &reservedWord : reservedWords)
-        {
-            if(reservedWord.word == value)
-            {
-                type = reservedWord.tokenType;
+        case '\"':
+        case '\'':
+        case '$':
+        case '!':
+        case '\\':
+            ++textIter;
+            return parserSuccess();
+        case '`':
+            if(isInsideBackquotes)
                 break;
+            ++textIter;
+            return parserSuccess();
+        default:
+        {
+            auto textIter2 = textIter;
+            auto retval = parseSimpleWordStartCharacter(textIter2);
+            if(retval)
+            {
+                textIter = textIter2;
+                return retval;
+            }
+            break;
+        }
+        }
+        return parserErrorStaticString("missing word start character", textIter);
+    }
+    ParseResult<> parseUnquotedWordEndCharacter(input::TextInput::Iterator &textIter,
+                                                bool isInsideBackquotes)
+    {
+        switch(*textIter)
+        {
+        case '`':
+            if(isInsideBackquotes)
+            {
+                ++textIter;
+                return parserSuccess();
+            }
+            break;
+        default:
+        {
+            auto textIter2 = textIter;
+            auto retval = parseMetacharacterOrEOF(textIter2);
+            if(retval)
+            {
+                textIter = textIter2;
+                return retval;
+            }
+            break;
+        }
+        }
+        return parserErrorStaticString("missing unquoted word end character", textIter);
+    }
+    ParseResult<ast::Word> parseWord(input::TextInput::Iterator &textIter,
+                                     bool isInsideBackquotes,
+                                     bool isVariableAssignmentPossible)
+    {
+        auto wordStartLocation = textIter.getLocation();
+        if(!parseWordStartCharacter(copy(textIter), isInsideBackquotes))
+            return parserErrorStaticString("missing word character", textIter);
+        std::vector<util::ArenaPtr<ast::WordPart>> wordParts;
+        while(!parseUnquotedWordEndCharacter(copy(textIter), isInsideBackquotes))
+        {
+            if(parseSimpleWordStartCharacter(copy(textIter)))
+            {
+                auto wordPartStartLocation = textIter.getLocation();
+                while(parseSimpleWordContinueCharacter(copy(textIter)))
+                {
+                    if(isVariableAssignmentPossible)
+                    {
+                    	if(*textIter == '=')
+                    	{
+#error finish
+                    	}
+                    }
+                    ++textIter;
+                }
+#error finish
+                wordParts
+            }
+            else
+            {
+                UNIMPLEMENTED();
             }
         }
-        return type;
     }
-    void reparseToken(TokenizerMode mode, bool outputAndSkipComments = true)
-    {
-        rewind();
-        parseNextToken(mode, outputAndSkipComments);
-    }
+#if 0
     void parseNextToken(TokenizerMode mode, bool outputAndSkipComments = true)
     {
         for(;;)
@@ -630,139 +818,8 @@ private:
             break;
         }
     }
-    void outputToken() const
-    {
-        if(!isInitialToken)
-            outputToken(tokenLocation, tokenType, tokenValue);
-    }
-    void outputToken(Location location, TokenType type, const std::string &value) const
-    {
-        actions.handleToken(parserLevel, location, type, value);
-    }
-    void outputAndNextToken(TokenizerMode tokenizerMode, bool outputAndSkipComments = true)
-    {
-        outputToken();
-        parseNextToken(tokenizerMode, outputAndSkipComments);
-    }
-
-private:
-    void parseUnsplitWord(bool inBackticks)
-    {
-        PushLevel pushLevel(this);
-        reparseToken(TokenizerMode::Command, false);
-        auto initialTokenLocation = tokenLocation;
-        auto initialTokenType = tokenType;
-        auto initialTokenValue = tokenValue;
-        outputAndNextToken(TokenizerMode::Command, false);
-        parseUnsplitWordContinuation(
-            inBackticks, initialTokenLocation, initialTokenType, initialTokenValue);
-    }
-    void parseUnsplitWordContinuation(bool inBackticks,
-                                      Location initialTokenLocation,
-                                      TokenType initialTokenType,
-                                      const std::string &initialTokenValue)
-    {
-        PushLevel pushLevel(this);
-        if(isWordTerminator(tokenType, inBackticks))
-            return;
-        reparseToken(TokenizerMode::Command, false);
-        while(true)
-        {
-            UNIMPLEMENTED();
-        }
-    }
-    void parseSimpleVariableAssignment(std::string &&variableName,
-                                       Location variableNameLocation,
-                                       bool inBackticks)
-    {
-        assert(tokenType == TokenType::Equal);
-        outputAndNextToken(TokenizerMode::Command);
-        UNIMPLEMENTED();
-    }
-    bool parseSimpleCommand(bool inBackticks)
-    {
-        PushLevel pushLevel(this);
-        bool parsedAnything = false;
-        reparseToken(TokenizerMode::CommandWithNames);
-        for(;;)
-        {
-            if(tokenType == TokenType::Blanks)
-            {
-                outputAndNextToken(TokenizerMode::CommandWithNames);
-                continue;
-            }
-            else if(tokenType == TokenType::Name)
-            {
-                tokenizeReservedWord();
-                auto initialTokenType = tokenType;
-                auto initialTokenValue = tokenValue;
-                auto initialTokenLocation = tokenLocation;
-                parseNextToken(TokenizerMode::CommandWithNames);
-                if(tokenType == TokenType::Equal) // variable assignment
-                {
-                    initialTokenType = TokenType::Name;
-                    outputToken(initialTokenLocation, initialTokenType, initialTokenValue);
-                    parseSimpleVariableAssignment(
-                        std::move(initialTokenValue), initialTokenLocation, inBackticks);
-                    parsedAnything = true;
-                    continue;
-                }
-                else if(tokenType == TokenType::LBracket) // variable assignment
-                {
-                    UNIMPLEMENTED();
-                    continue;
-                }
-                else if(tokenType == TokenType::Blanks
-                        || isCommandTerminator(tokenType, inBackticks))
-                {
-                }
-                else
-                {
-                    outputToken(initialTokenLocation, initialTokenType, initialTokenValue);
-                    UNIMPLEMENTED();
-                }
-            }
-            else if(isCommandTerminator(tokenType, inBackticks))
-            {
-                return parsedAnything;
-            }
-            else
-            {
-                UNIMPLEMENTED();
-            }
-        }
-    }
-
-public:
-    ParseCommandResult parseCommand()
-    {
-        PushLevel pushLevel(this);
-        parseNextToken(TokenizerMode::CommandWithNames);
-        while(tokenType == TokenType::Blanks)
-            outputAndNextToken(TokenizerMode::CommandWithNames);
-        if(tokenType == TokenType::Newline)
-        {
-            outputToken();
-            return ParseCommandResult::NoCommand;
-        }
-        if(tokenType == TokenType::EndOfFile)
-        {
-            outputToken();
-            return ParseCommandResult::Quit;
-        }
+#endif
 #warning finish
-        return parseSimpleCommand(false) ? ParseCommandResult::Success :
-                                           ParseCommandResult::NoCommand;
-    }
-};
-
-struct ParserActions
-{
-    virtual ~ParserActions() = default;
-    virtual void handleToken(std::size_t parserLevel,
-                             Location location,
-                             ParserBase::TokenType tokenType,
-                             const std::string &tokenValue) = 0;
 };
 }
 }

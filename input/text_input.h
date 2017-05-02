@@ -300,10 +300,10 @@ public:
         chunks.reserve((memorySize + chunkSize - 1) / chunkSize);
         for(std::size_t i = 0; i + 1 < memorySize / chunkSize; i++)
         {
-        	auto chunk = Chunk(AllocateTag{});
-        	const unsigned char *source = memory + i * chunkSize;
-        	for(std::size_t j = 0; j < chunkSize;j++)
-        		chunk[i] = source[i];
+            auto chunk = Chunk(AllocateTag{});
+            const unsigned char *source = memory + i * chunkSize;
+            for(std::size_t j = 0; j < chunkSize; j++)
+                chunk[i] = source[i];
             chunks.push_back(std::move(chunk));
         }
         std::size_t sizeLeft = memorySize % chunkSize;
@@ -481,6 +481,10 @@ public:
         {
             return index;
         }
+        Location getLocation() const noexcept
+        {
+        	return Location(index, input);
+        }
     };
     Iterator begin()
     {
@@ -546,7 +550,7 @@ public:
     }
     Location getLocation(const Iterator &i) noexcept
     {
-        return getLocation(i.getIndex());
+        return i.getLocation();
     }
     LocationSpan getLocationSpan(std::size_t beginIndex, std::size_t endIndex) noexcept
     {

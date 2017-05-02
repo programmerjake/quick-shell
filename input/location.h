@@ -18,6 +18,7 @@
 
 #include <iosfwd>
 #include <string>
+#include <cassert>
 
 namespace quick_shell
 {
@@ -49,6 +50,12 @@ struct SimpleLocationSpan
     constexpr SimpleLocationSpan(std::size_t beginIndex, std::size_t endIndex) noexcept
         : beginIndex(beginIndex),
           endIndex(endIndex)
+    {
+    }
+    constexpr SimpleLocationSpan(const SimpleLocation &beginLocation,
+                                 const SimpleLocation &endLocation) noexcept
+        : beginIndex(beginLocation.index),
+          endIndex(endLocation.index)
     {
     }
     constexpr std::size_t size() const noexcept
@@ -138,6 +145,24 @@ struct LocationSpan : public SimpleLocationSpan
         : SimpleLocationSpan(locationSpanInInput),
           input(&input)
     {
+    }
+    constexpr LocationSpan(const Location &beginLocation,
+                           const SimpleLocation &endLocation) noexcept
+        : SimpleLocationSpan(beginLocation, endLocation),
+          input(beginLocation.input)
+    {
+    }
+    constexpr LocationSpan(const SimpleLocation &beginLocation,
+                           const Location &endLocation) noexcept
+        : SimpleLocationSpan(beginLocation, endLocation),
+          input(endLocation.input)
+    {
+    }
+    LocationSpan(const Location &beginLocation, const Location &endLocation) noexcept
+        : SimpleLocationSpan(beginLocation, endLocation),
+          input(beginLocation.input)
+    {
+        assert(beginLocation.input == endLocation.input);
     }
     constexpr Location begin() const noexcept
     {

@@ -122,6 +122,28 @@ struct QuoteWordPart final : public GenericQuoteWordPart
 struct GenericTextWordPart : public WordPart
 {
     using WordPart::WordPart;
+    virtual QuotePart getQuotePart() const noexcept override final
+    {
+        return QuotePart::Other;
+    }
+};
+
+struct GenericVariableNameWordPart : public GenericTextWordPart
+{
+    using GenericTextWordPart::GenericTextWordPart;
+};
+
+struct SimpleAssignmentVariableNameWordPart final : public GenericVariableNameWordPart
+{
+    using GenericVariableNameWordPart::GenericVariableNameWordPart;
+    virtual QuoteKind getQuoteKind() const noexcept override
+    {
+        return QuoteKind::Unquoted;
+    }
+    virtual util::ArenaPtr<WordPart> duplicate(util::Arena &arena) const override
+    {
+        return arena.allocate<SimpleAssignmentVariableNameWordPart>(*this);
+    }
 };
 
 template <WordPart::QuoteKind quoteKind>
