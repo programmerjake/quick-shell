@@ -24,6 +24,7 @@
 #include "../util/compiler_intrinsics.h"
 #include "../input/text_input.h"
 #include "../input/location.h"
+#include "../util/variant.h"
 
 namespace quick_shell
 {
@@ -135,135 +136,177 @@ private:
     }
 
 private:
-    struct ParseResult final
+    union GenerateParseErrorFnArgument final
     {
-        union GenerateParseErrorFnArgument final
+        void *object;
+        void (*function)();
+        constexpr GenerateParseErrorFnArgument(void *object = nullptr) noexcept : object(object)
         {
-            void *object;
-            void (*function)();
-            constexpr GenerateParseErrorFnArgument(void *object = nullptr) noexcept : object(object)
-            {
-            }
-            constexpr GenerateParseErrorFnArgument(void (*function)()) noexcept : function(function)
-            {
-            }
-        };
-        typedef void (*GenerateParseErrorFn)(Parser &parser,
-                                             input::SimpleLocation location,
-                                             GenerateParseErrorFnArgument argument);
+        }
+        constexpr GenerateParseErrorFnArgument(void (*function)()) noexcept : function(function)
+        {
+        }
+    };
+    typedef void (*GenerateParseErrorFn)(Parser &parser,
+                                         input::SimpleLocation location,
+                                         GenerateParseErrorFnArgument argument);
+    struct ParseResultError final
+    {
         GenerateParseErrorFn function;
         input::SimpleLocation location;
         GenerateParseErrorFnArgument argument;
-        constexpr ParseResult() noexcept : function(nullptr), location(), argument()
+        constexpr ParseResultError() noexcept : function(nullptr), location(), argument()
         {
         }
-        constexpr explicit ParseResult(
+        constexpr ParseResultError(GenerateParseErrorFn function,
+                                   input::SimpleLocation location,
+                                   GenerateParseErrorFnArgument argument) noexcept
+            : function(function),
+              location(location),
+              argument(argument)
+        {
+        }
+        void throwError(Parser &parser) const
+        {
+            function(parser, location, argument);
+            UNREACHABLE();
+        }
+    };
+    template <typename T = void>
+    struct ParseResult final
+    {
+        typedef typename std::conditional<std::is_void<T>::value,
+                                          util::variant<ParseResultError>,
+                                          util::variant<ParseResultError, T>>::type VariantType;
+        VariantType value;
+        template <typename = typename std::enable_if<std::is_void<T>::value>::type>
+        ParseResult() noexcept : value()
+        {
+        }
+        ParseResult(typename std::enable_if<std::is_void<T>::value, T>::type &&value) : value(value)
+        {
+        }
+        ParseResult(const typename std::enable_if<std::is_void<T>::value, T>::type &value)
+            : value(value)
+        {
+        }
+        ParseResult(ParseResultError parseResultError) noexcept : value(parseResultError)
+        {
+        }
+        explicit ParseResult(
             GenerateParseErrorFn function,
             input::SimpleLocation location = input::SimpleLocation(),
             GenerateParseErrorFnArgument argument = GenerateParseErrorFnArgument()) noexcept
-            : function(function),
-              argument(argument)
+            : value(ParseResultError(function, location, argument))
         {
         }
         explicit ParseResult(void (*function)(Parser &parser, input::SimpleLocation location),
                              input::SimpleLocation location) noexcept
-            : function([](Parser &parser,
-                          input::SimpleLocation location,
-                          GenerateParseErrorFnArgument argument)
-                       {
-                           reinterpret_cast<void (*)(Parser &, input::SimpleLocation location)>(
-                               argument.function)(parser, location);
-                           UNREACHABLE();
-                       }),
-              argument(reinterpret_cast<void (*)()>(function))
+            : value(ParseResultError(
+                  [](Parser &parser,
+                     input::SimpleLocation location,
+                     GenerateParseErrorFnArgument argument)
+                  {
+                      reinterpret_cast<void (*)(Parser &, input::SimpleLocation location)>(
+                          argument.function)(parser, location);
+                      UNREACHABLE();
+                  },
+                  location,
+                  reinterpret_cast<void (*)()>(function)))
         {
         }
         explicit ParseResult(void (*function)(Parser &parser, input::Location location),
                              input::SimpleLocation location) noexcept
-            : function([](Parser &parser,
-                          input::SimpleLocation location,
-                          GenerateParseErrorFnArgument argument)
-                       {
-                           reinterpret_cast<void (*)(Parser &, input::Location location)>(
-                               argument.function)(parser,
-                                                  input::Location(location, parser.textInput));
-                           UNREACHABLE();
-                       }),
-              argument(reinterpret_cast<void (*)()>(function))
+            : value(ParseResultError(
+                  [](Parser &parser,
+                     input::SimpleLocation location,
+                     GenerateParseErrorFnArgument argument)
+                  {
+                      reinterpret_cast<void (*)(Parser &, input::Location location)>(
+                          argument.function)(parser, input::Location(location, parser.textInput));
+                      UNREACHABLE();
+                  },
+                  location,
+                  reinterpret_cast<void (*)()>(function)))
         {
         }
         explicit ParseResult(void (*function)(input::Location location),
                              input::SimpleLocation location) noexcept
-            : function([](Parser &parser,
-                          input::SimpleLocation location,
-                          GenerateParseErrorFnArgument argument)
-                       {
-                           reinterpret_cast<void (*)(input::Location location)>(argument.function)(
-                               input::Location(location, parser.textInput));
-                           UNREACHABLE();
-                       }),
-              argument(reinterpret_cast<void (*)()>(function))
+            : value(ParseResultError(
+                  [](Parser &parser,
+                     input::SimpleLocation location,
+                     GenerateParseErrorFnArgument argument)
+                  {
+                      reinterpret_cast<void (*)(input::Location location)>(argument.function)(
+                          input::Location(location, parser.textInput));
+                      UNREACHABLE();
+                  },
+                  location,
+                  reinterpret_cast<void (*)()>(function)))
         {
         }
         explicit ParseResult(void (*function)(input::SimpleLocation location),
                              input::SimpleLocation location) noexcept
-            : function([](Parser &parser,
-                          input::SimpleLocation location,
-                          GenerateParseErrorFnArgument argument)
-                       {
-                           reinterpret_cast<void (*)(input::Location location)>(argument.function)(
-                               location);
-                           UNREACHABLE();
-                       }),
-              argument(reinterpret_cast<void (*)()>(function))
+            : value(ParseResultError(
+                  [](Parser &parser,
+                     input::SimpleLocation location,
+                     GenerateParseErrorFnArgument argument)
+                  {
+                      reinterpret_cast<void (*)(input::Location location)>(argument.function)(
+                          location);
+                      UNREACHABLE();
+                  },
+                  location,
+                  reinterpret_cast<void (*)()>(function)))
         {
         }
         explicit ParseResult(void (*function)(input::SimpleLocation location),
                              input::SimpleLocation location) noexcept
-            : function([](Parser &parser,
-                          input::SimpleLocation location,
-                          GenerateParseErrorFnArgument argument)
-                       {
-                           reinterpret_cast<void (*)(input::Location location)>(argument.function)(
-                               location);
-                           UNREACHABLE();
-                       }),
-              argument(reinterpret_cast<void (*)()>(function))
+            : value(ParseResultError(
+                  [](Parser &parser,
+                     input::SimpleLocation location,
+                     GenerateParseErrorFnArgument argument)
+                  {
+                      reinterpret_cast<void (*)(input::Location location)>(argument.function)(
+                          location);
+                      UNREACHABLE();
+                  },
+                  location,
+                  reinterpret_cast<void (*)()>(function)))
         {
-        }
-        constexpr bool isSuccess() const noexcept
-        {
-            return function == nullptr;
         }
         constexpr bool isError() const noexcept
         {
-            return function != nullptr;
+            return value.is<ParseResultError>();
+        }
+        constexpr bool isSuccess() const noexcept
+        {
+            return !isError();
         }
         void throwError(Parser &parser) const
         {
-            assert(function);
-            function(parser, location, argument);
-            UNREACHABLE();
+            assert(isError());
+            value.get<ParseResultError>().throwError(parser);
         }
         constexpr explicit operator bool() const noexcept
         {
             return isSuccess();
         }
     };
-    template <typename... Args>
-    ParseResult parserError(Args &&... args) noexcept(
-        noexcept(ParseResult(std::forward<Args>(args)...)))
+    template <typename T = void, typename... Args>
+    ParseResult<T> parserError(Args &&... args) noexcept(
+        noexcept(ParseResult<T>(std::forward<Args>(args)...)))
     {
-        return ParseResult(std::forward<Args>(args)...);
+        return ParseResult<T>(std::forward<Args>(args)...);
     }
     template <std::size_t N>
-    ParseResult parserErrorStaticString(const char(&message)[N],
-                                        input::SimpleLocation location) noexcept
+    ParseResultError parserErrorStaticString(const char(&message)[N],
+                                             input::SimpleLocation location) noexcept
     {
-        return ParseResult(
+        return ParseResultError(
             [](Parser &parser,
                input::SimpleLocation location,
-               ParseResult::GenerateParseErrorFnArgument argument)
+               GenerateParseErrorFnArgument argument)
             {
                 throw ParseError(input::Location(location, parser.textInput),
                                  static_cast<const char *>(argument.object));
@@ -272,18 +315,28 @@ private:
             static_cast<void *>(const_cast<char *>(message)));
     }
     template <std::size_t N>
-    ParseResult parserErrorStaticString(const char(&message)[N],
-                                        const input::TextInput::Iterator &iter) noexcept
+    ParseResultError parserErrorStaticString(const char(&message)[N],
+                                             const input::TextInput::Iterator &iter) noexcept
     {
         return parserErrorStaticString(message, input::SimpleLocation(iter.getIndex()));
     }
-    constexpr ParseResult parserSuccess() noexcept
+    ParseResult<void> parserSuccess() noexcept
     {
-        return ParseResult();
+        return ParseResult<void>();
+    }
+    template <typename T>
+    ParseResult<T> parserSuccess(const T &v)
+    {
+        return ParseResult<T>(v);
+    }
+    template <typename T>
+    ParseResult<T> parserSuccess(T &&v)
+    {
+        return ParseResult<T>(std::move(v));
     }
 
 private:
-    ParseResult parseBlank(input::TextInput::Iterator &textIter)
+    ParseResult<> parseBlank(input::TextInput::Iterator &textIter)
     {
         switch(*textIter)
         {
@@ -295,7 +348,7 @@ private:
             return parserErrorStaticString("missing blank", textIter);
         }
     }
-    ParseResult parseMetacharacter(input::TextInput::Iterator &textIter)
+    ParseResult<> parseMetacharacter(input::TextInput::Iterator &textIter)
     {
         switch(*textIter)
         {
@@ -314,55 +367,52 @@ private:
             auto retval = parseBlank(textIter2);
             if(retval)
             {
-            	textIter = textIter2;
+                textIter = textIter2;
                 return retval;
             }
             textIter2 = textIter;
             auto retval = parseBlank(textIter2);
             if(retval)
             {
-            	textIter = textIter2;
+                textIter = textIter2;
                 return retval;
             }
             return parserErrorStaticString("missing metacharacter", textIter);
         }
         }
     }
-    ParseResult parseMetacharacterOrEOF(input::TextInput::Iterator &textIter)
+    ParseResult<> parseMetacharacterOrEOF(input::TextInput::Iterator &textIter)
     {
-    	if(*textIter == input::eof)
+        if(*textIter == input::eof)
         {
             ++textIter;
             return parserSuccess();
         }
-    	return parseMetacharacter(textIter);
+        return parseMetacharacter(textIter);
     }
-#error finish
-    static constexpr bool isMetacharacterOrEOF(int ch) noexcept
+    ParseResult<> parseNameStartCharacter(input::TextInput::Iterator &textIter)
     {
-        return isMetacharacter(ch) || ch == TextInput::eof;
+        int ch = *textIter;
+        if((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_')
+        {
+            ++textIter;
+            return parserSuccess();
+        }
+        return parserErrorStaticString("missing name start character", textIter);
     }
-    static bool isNameStartCharacter(int ch) noexcept
+    ParseResult<> parseNameContinueCharacter(input::TextInput::Iterator &textIter)
     {
-        if(ch >= 'a' && ch <= 'z')
-            return true;
-        if(ch >= 'A' && ch <= 'Z')
-            return true;
-        return ch == '_';
+        int ch = *textIter;
+        if(parseNameStartCharacter(copy(textIter)) || (ch >= '0' && ch <= '9'))
+        {
+            ++textIter;
+            return parserSuccess();
+        }
+        return parserErrorStaticString("missing name continue character", textIter);
     }
-    static bool isNameContinueCharacter(int ch) noexcept
+    ParseResult<> parseWordStartCharacter(input::TextInput::Iterator &textIter)
     {
-        if(isNameStartCharacter(ch))
-            return true;
-        if(ch >= '0' && ch <= '9')
-            return true;
-        return false;
-    }
-    static bool isWordStartCharacter(int ch) noexcept
-    {
-        if(isMetacharacterOrEOF(ch))
-            return false;
-        switch(ch)
+        switch(*textIter)
         {
         case '\"':
         case '\'':
@@ -370,201 +420,29 @@ private:
         case '$':
         case '`':
         case '\\':
-            return false;
-        }
-        return true;
-    }
-    static bool isWordContinueCharacter(int ch) noexcept
-    {
-        if(isWordStartCharacter(ch))
-            return true;
-        switch(ch)
-        {
         case '#':
-            return true;
+            break;
+        default:
+            if(!parseMetacharacterOrEOF(copy(textIter)))
+            {
+                ++textIter;
+                return parserSuccess();
+            }
         }
-        return false;
+        return parserErrorStaticString("missing word start character", textIter);
     }
-    void getAndAddChar()
+    ParseResult<> parseWordContinueCharacter(input::TextInput::Iterator &textIter)
     {
-        tokenValue += static_cast<char>(getChar());
-    }
-    static bool isCommandTerminator(TokenType tokenType, bool inBackticks) noexcept
-    {
-        switch(tokenType)
+        if(parseWordStartCharacter(copy(textIter)) || *textIter == '#')
         {
-        case TokenType::EndOfFile:
-        case TokenType::Newline:
-        case TokenType::RParen:
-        case TokenType::Semicolon:
-            return true;
-        case TokenType::Backtick:
-            return inBackticks;
-        case TokenType::Blanks:
-        case TokenType::SingleQuote:
-        case TokenType::DollarSingleQuoteStart:
-        case TokenType::DollarSingleQuoteEnd:
-        case TokenType::UnquotedWordPart:
-        case TokenType::QuotedWordPart:
-        case TokenType::UnquotedSimpleSubstitution:
-        case TokenType::QuotedSimpleSubstitution:
-        case TokenType::UnquotedSubstitutionStart:
-        case TokenType::QuotedSubstitutionStart:
-        case TokenType::UnquotedShellSubstitutionStart:
-        case TokenType::QuotedShellSubstitutionStart:
-        case TokenType::LParen:
-        case TokenType::Equal:
-        case TokenType::ExMark:
-        case TokenType::LBrace:
-        case TokenType::RBrace:
-        case TokenType::LBracket:
-        case TokenType::RBracket:
-        case TokenType::DoubleLBracket:
-        case TokenType::DoubleRBracket:
-        case TokenType::DoubleLParen:
-        case TokenType::DoubleRParen:
-        case TokenType::Comment:
-        case TokenType::Name:
-        case TokenType::Case:
-        case TokenType::Coproc:
-        case TokenType::Do:
-        case TokenType::Done:
-        case TokenType::ElIf:
-        case TokenType::Else:
-        case TokenType::Esac:
-        case TokenType::Fi:
-        case TokenType::For:
-        case TokenType::Function:
-        case TokenType::If:
-        case TokenType::In:
-        case TokenType::Select:
-        case TokenType::Time:
-        case TokenType::Then:
-        case TokenType::Until:
-        case TokenType::While:
-            return false;
+            ++textIter;
+            return parserSuccess();
         }
-        UNREACHABLE();
-        return false;
-    }
-    static bool isWordTerminator(TokenType tokenType, bool inBackticks) noexcept
-    {
-        switch(tokenType)
-        {
-        case TokenType::EndOfFile:
-        case TokenType::Newline:
-        case TokenType::RParen:
-        case TokenType::Semicolon:
-        case TokenType::Blanks:
-        case TokenType::LParen:
-        case TokenType::Comment:
-            return true;
-        case TokenType::Backtick:
-            return inBackticks;
-        case TokenType::SingleQuote:
-        case TokenType::DollarSingleQuoteStart:
-        case TokenType::DollarSingleQuoteEnd:
-        case TokenType::UnquotedWordPart:
-        case TokenType::QuotedWordPart:
-        case TokenType::UnquotedSimpleSubstitution:
-        case TokenType::QuotedSimpleSubstitution:
-        case TokenType::UnquotedSubstitutionStart:
-        case TokenType::QuotedSubstitutionStart:
-        case TokenType::UnquotedShellSubstitutionStart:
-        case TokenType::QuotedShellSubstitutionStart:
-        case TokenType::Equal:
-        case TokenType::ExMark:
-        case TokenType::LBrace:
-        case TokenType::RBrace:
-        case TokenType::LBracket:
-        case TokenType::RBracket:
-        case TokenType::DoubleLBracket:
-        case TokenType::DoubleRBracket:
-        case TokenType::DoubleLParen:
-        case TokenType::DoubleRParen:
-        case TokenType::Name:
-        case TokenType::Case:
-        case TokenType::Coproc:
-        case TokenType::Do:
-        case TokenType::Done:
-        case TokenType::ElIf:
-        case TokenType::Else:
-        case TokenType::Esac:
-        case TokenType::Fi:
-        case TokenType::For:
-        case TokenType::Function:
-        case TokenType::If:
-        case TokenType::In:
-        case TokenType::Select:
-        case TokenType::Time:
-        case TokenType::Then:
-        case TokenType::Until:
-        case TokenType::While:
-            return false;
-        }
-        UNREACHABLE();
-        return false;
-    }
-};
-
-template <bool DebuggingEnabled>
-struct ParserTemplateBase
-{
-protected:
-    std::ostream *debugOutput = nullptr;
-    explicit ParserTemplateBase(std::ostream *debugOutput) noexcept : debugOutput(debugOutput)
-    {
-    }
-};
-
-template <>
-struct ParserTemplateBase<false>
-{
-protected:
-    static constexpr std::ostream *debugOutput = nullptr;
-    explicit ParserTemplateBase(std::ostream *debugOutput) noexcept
-    {
-        assert(debugOutput == nullptr && "debug output is disabled");
-    }
-};
-
-template <typename ParserActions = ParserActions, bool DebuggingEnabled = false>
-class Parser final : private ParserTemplateBase<DebuggingEnabled>, public ParserBase
-{
-private:
-    using ParserTemplateBase<DebuggingEnabled>::debugOutput;
-    ParserActions &actions;
-    std::size_t parserLevel = 0;
-
-private:
-    struct PushLevel final
-    {
-        Parser *parser;
-        explicit PushLevel(Parser *parser) noexcept : parser(parser)
-        {
-            parser->parserLevel++;
-        }
-        PushLevel(const PushLevel &) = delete;
-        PushLevel &operator=(const PushLevel &) = delete;
-        ~PushLevel()
-        {
-            parser->parserLevel--;
-        }
-    };
-
-public:
-    constexpr Parser(ParserActions &actions,
-                     TextInput &textInput,
-                     std::ostream *debugOutput = nullptr)
-        : ParserTemplateBase<DebuggingEnabled>(debugOutput), ParserBase(textInput), actions(actions)
-    {
-    }
-    ParserActions &getActions() noexcept
-    {
-        return actions;
+        return parserErrorStaticString("missing word continue character", textIter);
     }
 
 private:
+#error finish
     void tokenizeReservedWord()
     {
         auto oldTokenType = tokenType;
