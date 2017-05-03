@@ -13,22 +13,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "input/stdin.h"
-#include "input/memory.h"
+#include "parser.h"
 #include <iostream>
-#include <sstream>
-#include "parser/parser.h"
 
-int main()
+namespace quick_shell
 {
-    using namespace quick_shell;
-    auto stdInInput = input::makeStdInTextInput(input::TextInputStyle(), true);
-#if 1
-    auto &ti = *stdInInput;
-#else
-    input::MemoryTextInput ti("builtin", input::TextInputStyle(), "abcdefgh\ni\njk\tmn");
-#endif
-    util::Arena arena;
-    parser::Parser parser(ti, arena);
-    parser.test();
+namespace parser
+{
+void Parser::test()
+{
+    try
+    {
+        auto textIter = textInput.begin();
+        auto result = parseWord(textIter, false, true, true);
+        if(!result)
+            result.throwError(*this);
+        else
+        {
+        	ast::ASTDumpState dumpState;
+            result.get()->dump(std::cout, dumpState);
+        }
+    }
+    catch(ParseError &v)
+    {
+        std::cerr << "error: " << v.what() << std::endl;
+    }
+    catch(std::system_error &v)
+    {
+        std::cerr << "internal error: " << v.what() << std::endl;
+    }
+}
+}
 }

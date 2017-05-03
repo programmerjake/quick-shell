@@ -30,6 +30,11 @@ struct BlankOrEmpty : public ASTBase<BlankOrEmpty>
     {
         return location.size() == 0;
     }
+    virtual util::ArenaPtr<BlankOrEmpty> duplicate(util::Arena &arena) const override
+    {
+        return arena.allocate<BlankOrEmpty>(*this);
+    }
+    virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override;
 };
 
 struct Blank final : public BlankOrEmpty
@@ -38,6 +43,11 @@ struct Blank final : public BlankOrEmpty
     {
     	assert(!isEmpty());
     }
+    virtual util::ArenaPtr<BlankOrEmpty> duplicate(util::Arena &arena) const override
+    {
+        return arena.allocate<Blank>(*this);
+    }
+    virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override;
 };
 }
 }

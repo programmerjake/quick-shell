@@ -338,19 +338,19 @@ public:
     template <typename FindType>
     const FindType &get() const &noexcept
     {
-        constexpr_assert(id == idFor<FindType>());
+        assert(id == idFor<FindType>());
         return variant_base::get<FindType, Types...>::getValue(values);
     }
     template <typename FindType>
         FindType &get() & noexcept
     {
-        constexpr_assert(id == idFor<FindType>());
+        assert(id == idFor<FindType>());
         return variant_base::get<FindType, Types...>::getValue(values);
     }
     template <typename FindType>
         FindType &&get() && noexcept
     {
-        constexpr_assert(id == idFor<FindType>());
+        assert(id == idFor<FindType>());
         return variant_base::get<FindType, Types...>::getValue(std::move(values));
     }
     variant() noexcept : id(idFor<void>()), values()

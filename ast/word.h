@@ -16,8 +16,8 @@
 #ifndef AST_WORD_H_
 #define AST_WORD_H_
 
-#include "ast_base.h"
 #include <vector>
+#include "word_or_redirection.h"
 
 namespace quick_shell
 {
@@ -25,22 +25,27 @@ namespace ast
 {
 struct WordPart;
 
-struct Word final : public ASTBase<Word>
+struct Word final : public WordOrRedirection
 {
     std::vector<util::ArenaPtr<WordPart>> wordParts;
-    explicit Word(std::vector<util::ArenaPtr<WordPart>> wordParts) : wordParts(std::move(wordParts))
+    Word(const input::LocationSpan &location, std::vector<util::ArenaPtr<WordPart>> wordParts)
+        : WordOrRedirection(location), wordParts(std::move(wordParts))
     {
     }
-    Word(std::initializer_list<util::ArenaPtr<WordPart>> wordParts) : wordParts(wordParts)
+    Word(const input::LocationSpan &location,
+         std::initializer_list<util::ArenaPtr<WordPart>> wordParts)
+        : WordOrRedirection(location), wordParts(wordParts)
     {
     }
-    Word() : wordParts()
+    explicit Word(const input::LocationSpan &location) : WordOrRedirection(location), wordParts()
     {
     }
-    virtual util::ArenaPtr<Word> duplicate(util::Arena &arena) const override
+    virtual util::ArenaPtr<WordOrRedirection> duplicate(util::Arena &arena) const override
     {
         return arena.allocate<Word>(*this);
     }
+    virtual util::ArenaPtr<WordOrRedirection> duplicateRecursive(util::Arena &arena) const override;
+    virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override;
 };
 }
 }

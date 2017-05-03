@@ -245,7 +245,7 @@ public:
                                auto *object = static_cast<T *>(memory);
                                delete object;
                            });
-            return retval;
+            return ArenaPtr<T>(retval);
         }
         catch(...)
         {

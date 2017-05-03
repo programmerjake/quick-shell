@@ -13,22 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "input/stdin.h"
-#include "input/memory.h"
-#include <iostream>
-#include <sstream>
-#include "parser/parser.h"
+#include "blank.h"
+#include <ostream>
 
-int main()
+namespace quick_shell
 {
-    using namespace quick_shell;
-    auto stdInInput = input::makeStdInTextInput(input::TextInputStyle(), true);
-#if 1
-    auto &ti = *stdInInput;
-#else
-    input::MemoryTextInput ti("builtin", input::TextInputStyle(), "abcdefgh\ni\njk\tmn");
-#endif
-    util::Arena arena;
-    parser::Parser parser(ti, arena);
-    parser.test();
+namespace ast
+{
+void BlankOrEmpty::dump(std::ostream &os, ASTDumpState &dumpState) const
+{
+    os << dumpState.indent << location
+       << ": BlankOrEmpty: " << ASTDumpState::escapedQuotedString(location.getTextInputText())
+       << std::endl;
+}
+
+void Blank::dump(std::ostream &os, ASTDumpState &dumpState) const
+{
+    os << dumpState.indent << location
+       << ": Blank: " << ASTDumpState::escapedQuotedString(location.getTextInputText())
+       << std::endl;
+}
+}
 }

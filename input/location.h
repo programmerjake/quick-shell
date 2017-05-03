@@ -19,6 +19,7 @@
 #include <iosfwd>
 #include <string>
 #include <cassert>
+#include <utility>
 
 namespace quick_shell
 {
@@ -36,6 +37,30 @@ struct SimpleLocation
     {
     }
     friend std::ostream &operator<<(std::ostream &os, const SimpleLocation &v);
+    friend constexpr bool operator==(const SimpleLocation &a, const SimpleLocation &b) noexcept
+    {
+        return a.index == b.index;
+    }
+    friend constexpr bool operator!=(const SimpleLocation &a, const SimpleLocation &b) noexcept
+    {
+        return a.index != b.index;
+    }
+    friend constexpr bool operator<=(const SimpleLocation &a, const SimpleLocation &b) noexcept
+    {
+        return a.index <= b.index;
+    }
+    friend constexpr bool operator>=(const SimpleLocation &a, const SimpleLocation &b) noexcept
+    {
+        return a.index >= b.index;
+    }
+    friend constexpr bool operator<(const SimpleLocation &a, const SimpleLocation &b) noexcept
+    {
+        return a.index < b.index;
+    }
+    friend constexpr bool operator>(const SimpleLocation &a, const SimpleLocation &b) noexcept
+    {
+        return a.index > b.index;
+    }
 };
 
 struct SimpleLocationSpan
@@ -79,6 +104,48 @@ struct SimpleLocationSpan
         return begin();
     }
     friend std::ostream &operator<<(std::ostream &os, const SimpleLocationSpan &v);
+    friend constexpr bool operator==(const SimpleLocationSpan &a,
+                                     const SimpleLocationSpan &b) noexcept
+    {
+        return a.beginIndex == b.beginIndex && a.endIndex == b.endIndex;
+    }
+    friend constexpr bool operator!=(const SimpleLocationSpan &a,
+                                     const SimpleLocationSpan &b) noexcept
+    {
+        return a.beginIndex != b.beginIndex || a.endIndex != b.endIndex;
+    }
+    friend constexpr bool operator>=(const SimpleLocationSpan &,
+                                     const SimpleLocationSpan &) noexcept = delete;
+    friend constexpr bool operator<=(const SimpleLocationSpan &,
+                                     const SimpleLocationSpan &) noexcept = delete;
+    friend constexpr bool operator>(const SimpleLocationSpan &,
+                                    const SimpleLocationSpan &) noexcept = delete;
+    friend constexpr bool operator<(const SimpleLocationSpan &,
+                                    const SimpleLocationSpan &) noexcept = delete;
+    friend constexpr bool operator==(const SimpleLocationSpan &,
+                                     const SimpleLocation &) noexcept = delete;
+    friend constexpr bool operator!=(const SimpleLocationSpan &,
+                                     const SimpleLocation &) noexcept = delete;
+    friend constexpr bool operator>=(const SimpleLocationSpan &,
+                                     const SimpleLocation &) noexcept = delete;
+    friend constexpr bool operator<=(const SimpleLocationSpan &,
+                                     const SimpleLocation &) noexcept = delete;
+    friend constexpr bool operator>(const SimpleLocationSpan &,
+                                    const SimpleLocation &) noexcept = delete;
+    friend constexpr bool operator<(const SimpleLocationSpan &,
+                                    const SimpleLocation &) noexcept = delete;
+    friend constexpr bool operator==(const SimpleLocation &,
+                                     const SimpleLocationSpan &) noexcept = delete;
+    friend constexpr bool operator!=(const SimpleLocation &,
+                                     const SimpleLocationSpan &) noexcept = delete;
+    friend constexpr bool operator>=(const SimpleLocation &,
+                                     const SimpleLocationSpan &) noexcept = delete;
+    friend constexpr bool operator<=(const SimpleLocation &,
+                                     const SimpleLocationSpan &) noexcept = delete;
+    friend constexpr bool operator>(const SimpleLocation &,
+                                    const SimpleLocationSpan &) noexcept = delete;
+    friend constexpr bool operator<(const SimpleLocation &,
+                                    const SimpleLocationSpan &) noexcept = delete;
 };
 
 struct Location : public SimpleLocation
@@ -112,6 +179,18 @@ struct Location : public SimpleLocation
     {
     }
     friend std::ostream &operator<<(std::ostream &os, const Location &v);
+    friend constexpr bool operator==(const Location &a, const Location &b) noexcept
+    {
+        return static_cast<const SimpleLocation &>(a) == b && a.input == b.input;
+    }
+    friend constexpr bool operator!=(const Location &a, const Location &b) noexcept
+    {
+        return static_cast<const SimpleLocation &>(a) != b || a.input != b.input;
+    }
+    friend constexpr bool operator<=(const Location &a, const Location &b) noexcept = delete;
+    friend constexpr bool operator>=(const Location &a, const Location &b) noexcept = delete;
+    friend constexpr bool operator<(const Location &a, const Location &b) noexcept = delete;
+    friend constexpr bool operator>(const Location &a, const Location &b) noexcept = delete;
 };
 
 struct LocationSpan : public SimpleLocationSpan
@@ -186,8 +265,56 @@ struct LocationSpan : public SimpleLocationSpan
         return getTextInputText(std::string(), replacementForEOF);
     }
     friend std::ostream &operator<<(std::ostream &os, const LocationSpan &v);
+    friend constexpr bool operator==(const LocationSpan &a, const LocationSpan &b) noexcept
+    {
+        return a.beginIndex == b.beginIndex && a.endIndex == b.endIndex && a.input == b.input;
+    }
+    friend constexpr bool operator!=(const LocationSpan &a, const LocationSpan &b) noexcept
+    {
+        return a.beginIndex != b.beginIndex || a.endIndex != b.endIndex || a.input != b.input;
+    }
 };
 }
+}
+
+namespace std
+{
+template <>
+struct hash<quick_shell::input::SimpleLocation>
+{
+    constexpr std::size_t operator()(const quick_shell::input::SimpleLocation &v) const noexcept
+    {
+        return v.index;
+    }
+};
+
+template <>
+struct hash<quick_shell::input::SimpleLocationSpan>
+{
+    constexpr std::size_t operator()(const quick_shell::input::SimpleLocationSpan &v) const noexcept
+    {
+        return v.beginIndex + 8191 * v.endIndex;
+    }
+};
+
+template <>
+struct hash<quick_shell::input::Location>
+{
+    std::size_t operator()(const quick_shell::input::Location &v) const noexcept
+    {
+        return v.index + hash<const void *>()(static_cast<const void *>(v.input));
+    }
+};
+
+template <>
+struct hash<quick_shell::input::LocationSpan>
+{
+    std::size_t operator()(const quick_shell::input::LocationSpan &v) const noexcept
+    {
+        return v.beginIndex + 8191 * v.endIndex
+               + hash<const void *>()(static_cast<const void *>(v.input));
+    }
+};
 }
 
 #endif /* INPUT_LOCATION_H_ */

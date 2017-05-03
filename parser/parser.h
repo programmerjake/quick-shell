@@ -21,8 +21,7 @@
 #include <sstream>
 #include <vector>
 #include <stdexcept>
-#include <algorithm>
-#include <tuple>
+#include <type_traits>
 #include "../util/compiler_intrinsics.h"
 #include "../input/text_input.h"
 #include "../input/location.h"
@@ -61,153 +60,6 @@ enum class ParseCommandResult
     NoCommand,
     Quit,
 };
-
-enum class ReservedWord
-{
-    ExMark, // "!"
-    DoubleLBracket, // "[["
-    DoubleRBracket, // "]]"
-    Case, // "case"
-    Coproc, // "coproc"
-    Do, // "do"
-    Done, // "done"
-    ElIf, // "elif"
-    Else, // "else"
-    Esac, // "esac"
-    Fi, // "fi"
-    For, // "for"
-    Function, // "function"
-    If, // "if"
-    In, // "in"
-    Select, // "select"
-    Then, // "then"
-    Time, // "time"
-    Until, // "until"
-    While, // "while"
-    LBrace, // "{"
-    RBrace, // "}"
-};
-
-inline util::string_view getReservedWordString(ReservedWord v) noexcept
-{
-    switch(v)
-    {
-    case ReservedWord::ExMark:
-        return "!";
-    case ReservedWord::DoubleLBracket:
-        return "[[";
-    case ReservedWord::DoubleRBracket:
-        return "]]";
-    case ReservedWord::Case:
-        return "case";
-    case ReservedWord::Coproc:
-        return "coproc";
-    case ReservedWord::Do:
-        return "do";
-    case ReservedWord::Done:
-        return "done";
-    case ReservedWord::ElIf:
-        return "elif";
-    case ReservedWord::Else:
-        return "else";
-    case ReservedWord::Esac:
-        return "esac";
-    case ReservedWord::Fi:
-        return "fi";
-    case ReservedWord::For:
-        return "for";
-    case ReservedWord::Function:
-        return "function";
-    case ReservedWord::If:
-        return "if";
-    case ReservedWord::In:
-        return "in";
-    case ReservedWord::Select:
-        return "select";
-    case ReservedWord::Time:
-        return "time";
-    case ReservedWord::Then:
-        return "then";
-    case ReservedWord::Until:
-        return "until";
-    case ReservedWord::While:
-        return "while";
-    case ReservedWord::LBrace:
-        return "{";
-    case ReservedWord::RBrace:
-        return "}";
-    }
-    UNREACHABLE();
-    return "";
-}
-
-inline util::variant<ReservedWord> stringToReservedWord(util::string_view v) noexcept
-{
-    struct StringAndReservedWord
-    {
-        util::string_view string;
-        ReservedWord reservedWord;
-        constexpr StringAndReservedWord(util::string_view string,
-                                        ReservedWord reservedWord) noexcept
-            : string(string),
-              reservedWord(reservedWord)
-        {
-        }
-    };
-    struct Comparer
-    {
-        bool operator()(StringAndReservedWord a, StringAndReservedWord b) const noexcept
-        {
-            return a.string < b.string;
-        }
-        bool operator()(util::string_view a, StringAndReservedWord b) const noexcept
-        {
-            return a < b.string;
-        }
-        bool operator()(StringAndReservedWord a, util::string_view b) const noexcept
-        {
-            return a.string < b;
-        }
-        bool operator()(util::string_view a, util::string_view b) const noexcept
-        {
-            return a < b;
-        }
-    };
-    static const StringAndReservedWord mappingTable[] = {
-        {"!", ReservedWord::ExMark},
-        {"[[", ReservedWord::DoubleLBracket},
-        {"]]", ReservedWord::DoubleRBracket},
-        {"case", ReservedWord::Case},
-        {"coproc", ReservedWord::Coproc},
-        {"do", ReservedWord::Do},
-        {"done", ReservedWord::Done},
-        {"elif", ReservedWord::ElIf},
-        {"else", ReservedWord::Else},
-        {"esac", ReservedWord::Esac},
-        {"fi", ReservedWord::Fi},
-        {"for", ReservedWord::For},
-        {"function", ReservedWord::Function},
-        {"if", ReservedWord::If},
-        {"in", ReservedWord::In},
-        {"select", ReservedWord::Select},
-        {"then", ReservedWord::Then},
-        {"time", ReservedWord::Time},
-        {"until", ReservedWord::Until},
-        {"while", ReservedWord::While},
-        {"{", ReservedWord::LBrace},
-        {"}", ReservedWord::RBrace},
-    };
-    static const bool isSorted =
-        std::is_sorted(std::begin(mappingTable), std::end(mappingTable), Comparer());
-    assert(isSorted);
-    auto results =
-        std::equal_range(std::begin(mappingTable), std::end(mappingTable), v, Comparer());
-    auto *first = std::get<0>(results);
-    auto *last = std::get<1>(results);
-    if(first == last)
-        return util::variant<ReservedWord>();
-    return util::variant<ReservedWord>(first->reservedWord);
-}
 
 class Parser final
 {
@@ -335,14 +187,19 @@ private:
                                           util::variant<ParseResultError>,
                                           util::variant<ParseResultError, T>>::type VariantType;
         VariantType value;
-        template <typename = typename std::enable_if<std::is_void<T>::value>::type>
-        ParseResult() noexcept : value()
+        template <typename T2 = T,
+                  typename Bool = typename std::enable_if<std::is_void<T2>::value, bool>::type>
+        ParseResult() noexcept(Bool(true))
+            : value()
         {
         }
-        ParseResult(typename std::enable_if<std::is_void<T>::value, T>::type &&value) : value(value)
+        template <typename T2 = T>
+        ParseResult(typename std::enable_if<!std::is_void<T2>::value, T2>::type &&value)
+            : value(value)
         {
         }
-        ParseResult(const typename std::enable_if<std::is_void<T>::value, T>::type &value)
+        template <typename T2 = T>
+        ParseResult(const typename std::enable_if<!std::is_void<T2>::value, T2>::type &value)
             : value(value)
         {
         }
@@ -408,7 +265,7 @@ private:
                      input::SimpleLocation location,
                      GenerateParseErrorFnArgument argument)
                   {
-                      reinterpret_cast<void (*)(input::Location location)>(argument.function)(
+                      reinterpret_cast<void (*)(input::SimpleLocation location)>(argument.function)(
                           location);
                       UNREACHABLE();
                   },
@@ -416,37 +273,28 @@ private:
                   reinterpret_cast<void (*)()>(function)))
         {
         }
-        explicit ParseResult(void (*function)(input::SimpleLocation location),
-                             input::SimpleLocation location) noexcept
-            : value(ParseResultError(
-                  [](Parser &parser,
-                     input::SimpleLocation location,
-                     GenerateParseErrorFnArgument argument)
-                  {
-                      reinterpret_cast<void (*)(input::Location location)>(argument.function)(
-                          location);
-                      UNREACHABLE();
-                  },
-                  location,
-                  reinterpret_cast<void (*)()>(function)))
+        bool isError() const noexcept
         {
+            return value.template is<ParseResultError>();
         }
-        constexpr bool isError() const noexcept
-        {
-            return value.is<ParseResultError>();
-        }
-        constexpr bool isSuccess() const noexcept
+        bool isSuccess() const noexcept
         {
             return !isError();
         }
         void throwError(Parser &parser) const
         {
             assert(isError());
-            value.get<ParseResultError>().throwError(parser);
+            value.template get<ParseResultError>().throwError(parser);
         }
-        constexpr explicit operator bool() const noexcept
+        explicit operator bool() const noexcept
         {
             return isSuccess();
+        }
+        template <typename T2 = T>
+        typename std::enable_if<std::is_same<T, T2>::value && !std::is_void<T2>::value, T2>::type &
+            get() noexcept
+        {
+            return value.template get<T2>();
         }
     };
     template <typename T = void, typename... Args>
@@ -492,6 +340,26 @@ private:
     }
 
 private:
+    ParseResult<> parseNewline(input::TextInput::Iterator &textIter)
+    {
+        if(*textIter == '\r')
+        {
+            ++textIter;
+            if(textInput.getInputStyle().allowCRLFAsNewLine && *textIter == '\n')
+            {
+                ++textIter;
+                return parserSuccess();
+            }
+            if(textInput.getInputStyle().allowCRAsNewLine)
+                return parserSuccess();
+        }
+        if(textInput.getInputStyle().allowLFAsNewLine && *textIter == '\n')
+        {
+            ++textIter;
+            return parserSuccess();
+        }
+        return parserErrorStaticString("missing newline", textIter);
+    }
     ParseResult<> parseBlank(input::TextInput::Iterator &textIter)
     {
         switch(*textIter)
@@ -520,14 +388,14 @@ private:
         default:
         {
             auto textIter2 = textIter;
-            auto retval = parseBlank(textIter2);
+            auto retval = parseNewline(textIter2);
             if(retval)
             {
                 textIter = textIter2;
                 return retval;
             }
             textIter2 = textIter;
-            auto retval = parseBlank(textIter2);
+            retval = parseBlank(textIter2);
             if(retval)
             {
                 textIter = textIter2;
@@ -653,9 +521,10 @@ private:
         }
         return parserErrorStaticString("missing unquoted word end character", textIter);
     }
-    ParseResult<ast::Word> parseWord(input::TextInput::Iterator &textIter,
-                                     bool isInsideBackquotes,
-                                     bool isVariableAssignmentPossible)
+    ParseResult<util::ArenaPtr<ast::Word>> parseWord(input::TextInput::Iterator &textIter,
+                                                     bool isInsideBackquotes,
+                                                     bool checkForVariableAssignment,
+                                                     bool checkForReservedWords)
     {
         auto wordStartLocation = textIter.getLocation();
         if(!parseWordStartCharacter(copy(textIter), isInsideBackquotes))
@@ -666,25 +535,62 @@ private:
             if(parseSimpleWordStartCharacter(copy(textIter)))
             {
                 auto wordPartStartLocation = textIter.getLocation();
-                while(parseSimpleWordContinueCharacter(copy(textIter)))
+                if(checkForVariableAssignment && !parseNameStartCharacter(copy(textIter)))
+                    checkForVariableAssignment = false;
+                for(;;)
                 {
-                    if(isVariableAssignmentPossible)
+                    if(!parseSimpleWordContinueCharacter(copy(textIter)))
                     {
-                    	if(*textIter == '=')
-                    	{
-#error finish
-                    	}
+                        wordParts.push_back(
+                            arena.allocate<ast::TextWordPart<ast::WordPart::QuoteKind::Unquoted>>(
+                                input::LocationSpan(wordPartStartLocation,
+                                                    textIter.getLocation())));
+                        checkForVariableAssignment = false;
+                        break;
+                    }
+                    if(checkForVariableAssignment)
+                    {
+                        if(*textIter == '=')
+                        {
+                            wordParts.push_back(arena.allocate<ast::AssignmentVariableNameWordPart>(
+                                input::LocationSpan(wordPartStartLocation,
+                                                    textIter.getLocation())));
+                            auto equalSignStartLocation = textIter.getLocation();
+                            ++textIter;
+                            wordParts.push_back(arena.allocate<ast::AssignmentEqualSignWordPart>(
+                                input::LocationSpan(equalSignStartLocation,
+                                                    textIter.getLocation())));
+                            checkForVariableAssignment = false;
+                            break;
+                        }
+                        else if(*textIter == '[')
+                        {
+                            UNIMPLEMENTED();
+                        }
+                        else if(!parseNameContinueCharacter(copy(textIter)))
+                            checkForVariableAssignment = false;
                     }
                     ++textIter;
                 }
-#error finish
-                wordParts
             }
             else
             {
                 UNIMPLEMENTED();
             }
         }
+        if(checkForReservedWords && wordParts.size() == 1
+           && util::dynamic_pointer_cast<ast::TextWordPart<ast::WordPart::QuoteKind::Unquoted>>(
+                  wordParts.front()))
+        {
+            auto result = stringToReservedWord(wordParts.front()->getSourceText());
+            if(result.is<ReservedWord>())
+            {
+                wordParts.front() = ast::GenericReservedWordPart::make(
+                    arena, wordParts.front()->location, result.get<ReservedWord>());
+            }
+        }
+        return parserSuccess(arena.allocate<ast::Word>(
+            input::LocationSpan(wordStartLocation, textIter.getLocation()), std::move(wordParts)));
     }
 #if 0
     void parseNextToken(TokenizerMode mode, bool outputAndSkipComments = true)
@@ -820,6 +726,8 @@ private:
     }
 #endif
 #warning finish
+public:
+    void test();
 };
 }
 }

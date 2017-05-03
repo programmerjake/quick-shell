@@ -13,22 +13,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "input/stdin.h"
-#include "input/memory.h"
-#include <iostream>
-#include <sstream>
-#include "parser/parser.h"
+#include "word_part.h"
 
-int main()
+namespace quick_shell
 {
-    using namespace quick_shell;
-    auto stdInInput = input::makeStdInTextInput(input::TextInputStyle(), true);
-#if 1
-    auto &ti = *stdInInput;
-#else
-    input::MemoryTextInput ti("builtin", input::TextInputStyle(), "abcdefgh\ni\njk\tmn");
-#endif
-    util::Arena arena;
-    parser::Parser parser(ti, arena);
-    parser.test();
+namespace ast
+{
+void AssignmentVariableNameWordPart::dump(std::ostream &os, ASTDumpState &dumpState) const
+{
+    os << dumpState.indent << location << ": AssignmentVariableNameWordPart: "
+       << ASTDumpState::escapedQuotedString(location.getTextInputText()) << std::endl;
+}
+
+void AssignmentEqualSignWordPart::dump(std::ostream &os, ASTDumpState &dumpState) const
+{
+    os << dumpState.indent << location << ": AssignmentEqualSignWordPart: "
+       << ASTDumpState::escapedQuotedString(location.getTextInputText()) << std::endl;
+}
+}
 }
