@@ -22,6 +22,7 @@
 #include <vector>
 #include <stdexcept>
 #include <type_traits>
+#include <limits>
 #include "../util/compiler_intrinsics.h"
 #include "../input/text_input.h"
 #include "../input/location.h"
@@ -148,10 +149,14 @@ private:
     {
         void *object;
         void (*function)();
+        std::size_t integer;
         constexpr GenerateParseErrorFnArgument(void *object = nullptr) noexcept : object(object)
         {
         }
         constexpr GenerateParseErrorFnArgument(void (*function)()) noexcept : function(function)
+        {
+        }
+        constexpr GenerateParseErrorFnArgument(std::size_t integer) noexcept : integer(integer)
         {
         }
     };
@@ -329,18 +334,13 @@ private:
         return ParseResult<void>();
     }
     template <typename T>
-    ParseResult<T> parserSuccess(const T &v)
+    ParseResult<typename std::decay<T>::type> parserSuccess(T &&v)
     {
-        return ParseResult<T>(v);
-    }
-    template <typename T>
-    ParseResult<T> parserSuccess(T &&v)
-    {
-        return ParseResult<T>(std::move(v));
+        return ParseResult<typename std::decay<T>::type>(std::forward<T>(v));
     }
 
 private:
-    ParseResult<> parseNewline(input::TextInput::Iterator &textIter)
+    ParseResult<> parseNewLine(input::TextInput::Iterator &textIter)
     {
         if(*textIter == '\r')
         {
@@ -388,7 +388,7 @@ private:
         default:
         {
             auto textIter2 = textIter;
-            auto retval = parseNewline(textIter2);
+            auto retval = parseNewLine(textIter2);
             if(retval)
             {
                 textIter = textIter2;
@@ -521,6 +521,77 @@ private:
         }
         return parserErrorStaticString("missing unquoted word end character", textIter);
     }
+    ParseResult<int> parseDigit(input::TextInput::Iterator &textIter, std::size_t base = 10)
+    {
+        assert(base >= 2 && base <= 36);
+        int ch = *textIter;
+        int value = -1;
+        if(ch >= '0' && ch <= '9')
+            value = ch - '0';
+        else if(ch >= 'a' && ch <= 'z')
+            value = ch - 'a' + 0xA;
+        else if(ch >= 'A' && ch <= 'Z')
+            value = ch - 'A' + 0xA;
+        if(value >= static_cast<int>(base))
+            value = -1;
+        if(value != -1)
+        {
+            ++textIter;
+            return parserSuccess(value);
+        }
+        if(base == 10)
+            return parserErrorStaticString("missing decimal digit", textIter);
+        if(base == 16)
+            return parserErrorStaticString("missing hexadecimal digit", textIter);
+        if(base == 8)
+            return parserErrorStaticString("missing octal digit", textIter);
+        if(base == 2)
+            return parserErrorStaticString("missing binary digit", textIter);
+        return parserError<int>(
+            [](Parser &parser,
+               input::SimpleLocation location,
+               GenerateParseErrorFnArgument argument)
+            {
+                std::ostringstream ss;
+                ss << "missing base-" << argument.integer << " digit";
+                throw ParseError(input::Location(location, parser.textInput), ss.str());
+            },
+            textIter.getLocation(),
+            base);
+    }
+    template <typename NumberType = unsigned long>
+    ParseResult<NumberType> parseSimpleNumber(input::TextInput::Iterator &textIter,
+                                              std::size_t base,
+                                              std::size_t minDigitCount,
+                                              std::size_t maxDigitCount)
+    {
+        assert(base >= 2 && base <= 36);
+        constexpr NumberType maxValue = std::numeric_limits<NumberType>::max();
+        const NumberType maxValueOverBase = maxValue / base;
+        const NumberType maxValueModBase = maxValue % base;
+        NumberType retval = 0;
+        std::size_t digitCount = 0;
+        auto startLocation = textIter.getLocation();
+        while(digitCount < maxDigitCount)
+        {
+            auto textIter2 = textIter;
+            auto digitResult = parseDigit(textIter2, base);
+            if(!digitResult)
+            {
+                if(digitCount >= minDigitCount)
+                    break;
+                return parserError(digitResult.value.get<ParseResultError>());
+            }
+            textIter = textIter2;
+            digitCount++;
+            int digitValue = digitResult.get();
+            if(retval > maxValueOverBase || (retval == maxValueOverBase && digitValue > maxValueModBase))
+            	return parserErrorStaticString("number too big", startLocation);
+            retval *= base;
+            retval += digitValue;
+        }
+        return parserSuccess(retval);
+    }
     ParseResult<util::ArenaPtr<ast::Word>> parseWord(input::TextInput::Iterator &textIter,
                                                      bool isInsideBackquotes,
                                                      bool checkForVariableAssignment,
@@ -528,7 +599,7 @@ private:
     {
         auto wordStartLocation = textIter.getLocation();
         if(!parseWordStartCharacter(copy(textIter), isInsideBackquotes))
-            return parserErrorStaticString("missing word character", textIter);
+            return parserErrorStaticString("missing word", textIter);
         std::vector<util::ArenaPtr<ast::WordPart>> wordParts;
         while(!parseUnquotedWordEndCharacter(copy(textIter), isInsideBackquotes))
         {
@@ -573,20 +644,105 @@ private:
                     ++textIter;
                 }
             }
+            else if(*textIter == '\\')
+            {
+                auto escapeStartLocation = textIter.getLocation();
+                auto escapeStartTextIter = textIter;
+                ++textIter;
+                auto textIter2 = textIter;
+                if(parseNewLine(textIter2))
+                {
+                    textIter = textIter2;
+                    wordParts.push_back(
+                        arena.allocate<ast::LineContinuationWordPart<ast::WordPart::QuoteKind::
+                                                                         Unquoted>>(
+                            input::LocationSpan(escapeStartLocation, textIter.getLocation())));
+                }
+                else if(*textIter != input::eof)
+                {
+                    char value = *textIter;
+                    ++textIter;
+                    wordParts.push_back(
+                        arena.allocate<ast::SimpleEscapeSequenceWordPart<ast::WordPart::QuoteKind::
+                                                                             Unquoted>>(
+                            input::LocationSpan(escapeStartLocation, textIter.getLocation()),
+                            value));
+                }
+                else
+                {
+                    textIter = escapeStartTextIter;
+                    break;
+                }
+            }
+            else if(*textIter == '\'')
+            {
+                auto openingQuoteStartLocation = textIter.getLocation();
+                ++textIter;
+                wordParts.push_back(
+                    arena.allocate<ast::QuoteWordPart<true, ast::WordPart::QuoteKind::SingleQuote>>(
+                        input::LocationSpan(openingQuoteStartLocation, textIter.getLocation())));
+                auto quotedTextStartLocation = textIter.getLocation();
+                while(*textIter != '\'')
+                {
+                    if(*textIter == input::eof)
+                        return parserErrorStaticString("missing closing \'", textIter);
+                    ++textIter;
+                }
+                wordParts.push_back(
+                    arena.allocate<ast::TextWordPart<ast::WordPart::QuoteKind::SingleQuote>>(
+                        input::LocationSpan(quotedTextStartLocation, textIter.getLocation())));
+                auto closingQuoteStartLocation = textIter.getLocation();
+                ++textIter;
+                wordParts.push_back(
+                    arena
+                        .allocate<ast::QuoteWordPart<false, ast::WordPart::QuoteKind::SingleQuote>>(
+                            input::LocationSpan(closingQuoteStartLocation,
+                                                textIter.getLocation())));
+            }
             else
             {
                 UNIMPLEMENTED();
             }
         }
-        if(checkForReservedWords && wordParts.size() == 1
-           && util::dynamic_pointer_cast<ast::TextWordPart<ast::WordPart::QuoteKind::Unquoted>>(
-                  wordParts.front()))
+        if(wordParts.empty())
+            return parserErrorStaticString("missing word", textIter);
+        if(checkForReservedWords && !wordParts.empty())
         {
-            auto result = stringToReservedWord(wordParts.front()->getSourceText());
-            if(result.is<ReservedWord>())
+            std::string wordText, temp;
+            bool couldBeReservedWord = true;
+            for(auto &wordPart : wordParts)
             {
-                wordParts.front() = ast::GenericReservedWordPart::make(
-                    arena, wordParts.front()->location, result.get<ReservedWord>());
+                if(util::
+                       dynamic_pointer_cast<ast::TextWordPart<ast::WordPart::QuoteKind::Unquoted>>(
+                           wordPart))
+                {
+                    // use temp so we don't have to reallocate as often
+                    temp = wordPart->getSourceText(std::move(temp));
+                    wordText += temp;
+                }
+                else if(!util::
+                            dynamic_pointer_cast<ast::LineContinuationWordPart<ast::WordPart::
+                                                                                   QuoteKind::
+                                                                                       Unquoted>>(
+                                wordPart))
+                {
+                    couldBeReservedWord = false;
+                    break;
+                }
+            }
+            if(couldBeReservedWord)
+            {
+                auto result = stringToReservedWord(wordText);
+                if(result.is<ReservedWord>())
+                {
+                    auto startLocation = wordParts.front()->location.begin();
+                    auto endLocation = wordParts.back()->location.end();
+                    wordParts.resize(1);
+                    wordParts.front() = ast::GenericReservedWordPart::make(
+                        arena,
+                        input::LocationSpan(startLocation, endLocation),
+                        result.get<ReservedWord>());
+                }
             }
         }
         return parserSuccess(arena.allocate<ast::Word>(
