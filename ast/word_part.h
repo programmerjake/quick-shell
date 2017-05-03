@@ -143,7 +143,7 @@ struct QuoteWordPart final : public GenericQuoteWordPart
     {
         os << dumpState.indent << location << ": QuoteWordPart<" << (isStart ? "Start" : "Stop")
            << ", " << getQuoteKindString(quoteKind)
-           << ">: " << ASTDumpState::escapedQuotedString(location.getTextInputText()) << std::endl;
+           << ">: " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
     }
 };
 
@@ -204,7 +204,7 @@ struct TextWordPart final : public GenericTextWordPart
     virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override
     {
         os << dumpState.indent << location << ": TextWordPart<" << getQuoteKindString(quoteKind)
-           << ">: " << ASTDumpState::escapedQuotedString(location.getTextInputText()) << std::endl;
+           << ">: " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
     }
 };
 
@@ -237,7 +237,7 @@ struct ReservedWordPart final : public GenericReservedWordPart
     {
         os << dumpState.indent << location << ": ReservedWordPart<"
            << getReservedWordName(reservedWord)
-           << ">: " << ASTDumpState::escapedQuotedString(location.getTextInputText()) << std::endl;
+           << ">: " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
     }
 };
 
@@ -337,42 +337,7 @@ struct SimpleEscapeSequenceWordPart final : public GenericSimpleEscapeSequenceWo
         os << dumpState.indent << location << ": SimpleEscapeSequenceWordPart<"
            << getQuoteKindString(quoteKind)
            << ">(value=" << ASTDumpState::escapedQuotedString(getValue())
-           << "): " << ASTDumpState::escapedQuotedString(location.getTextInputText()) << std::endl;
-    }
-};
-
-struct GenericLineContinuationWordPart : public GenericEscapeSequenceWordPart
-{
-    using GenericEscapeSequenceWordPart::GenericEscapeSequenceWordPart;
-    virtual util::string_view getValue() const noexcept override final
-    {
-        return "";
-    }
-    static constexpr bool isValidQuoteKindForLineContinuation(QuoteKind quoteKind) noexcept
-    {
-        return quoteKind == QuoteKind::DoubleQuote || quoteKind == QuoteKind::LocalizedDoubleQuote
-               || quoteKind == QuoteKind::Unquoted;
-    }
-};
-
-template <WordPart::QuoteKind quoteKind>
-struct LineContinuationWordPart final : public GenericLineContinuationWordPart
-{
-    static_assert(isValidQuoteKindForLineContinuation(quoteKind), "");
-    using GenericLineContinuationWordPart::GenericLineContinuationWordPart;
-    virtual QuoteKind getQuoteKind() const noexcept override
-    {
-        return quoteKind;
-    }
-    virtual util::ArenaPtr<WordPart> duplicate(util::Arena &arena) const override
-    {
-        return arena.allocate<LineContinuationWordPart>(*this);
-    }
-    virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override
-    {
-        os << dumpState.indent << location << ": LineContinuationWordPart<"
-           << getQuoteKindString(quoteKind)
-           << ">: " << ASTDumpState::escapedQuotedString(location.getTextInputText()) << std::endl;
+           << "): " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
     }
 };
 }

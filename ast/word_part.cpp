@@ -22,13 +22,13 @@ namespace ast
 void AssignmentVariableNameWordPart::dump(std::ostream &os, ASTDumpState &dumpState) const
 {
     os << dumpState.indent << location << ": AssignmentVariableNameWordPart: "
-       << ASTDumpState::escapedQuotedString(location.getTextInputText()) << std::endl;
+       << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
 }
 
 void AssignmentEqualSignWordPart::dump(std::ostream &os, ASTDumpState &dumpState) const
 {
     os << dumpState.indent << location << ": AssignmentEqualSignWordPart: "
-       << ASTDumpState::escapedQuotedString(location.getTextInputText()) << std::endl;
+       << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
 }
 }
 }

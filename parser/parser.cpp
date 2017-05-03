@@ -24,13 +24,13 @@ void Parser::test()
 {
     try
     {
-        auto textIter = textInput.begin();
+        auto textIter = input::LineContinuationRemovingIterator(textInput.begin());
         auto result = parseWord(textIter, false, true, true);
         if(!result)
             result.throwError(*this);
         else
         {
-        	ast::ASTDumpState dumpState;
+            ast::ASTDumpState dumpState;
             result.get()->dump(std::cout, dumpState);
         }
     }

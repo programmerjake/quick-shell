@@ -79,7 +79,7 @@ public:
     };
     constexpr static EscapedQuotedString escapedQuotedString(util::string_view string) noexcept
     {
-    	return EscapedQuotedString(string);
+        return EscapedQuotedString(string);
     }
     IndentState indent;
 };
@@ -101,13 +101,25 @@ struct ASTBase
     {
         return duplicate(arena);
     }
+    /** line continuations are removed */
     std::string getSourceText(std::string bufferSource) const
     {
         return location.getTextInputText(std::move(bufferSource));
     }
+    /** line continuations are removed */
     std::string getSourceText() const
     {
         return location.getTextInputText();
+    }
+    /** line continuations are not removed */
+    std::string getRawSourceText(std::string bufferSource) const
+    {
+        return location.getRawTextInputText(std::move(bufferSource));
+    }
+    /** line continuations are not removed */
+    std::string getRawSourceText() const
+    {
+        return location.getRawTextInputText();
     }
     virtual void dump(std::ostream &os, ASTDumpState &dumpState) const = 0;
 };

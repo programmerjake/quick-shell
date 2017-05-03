@@ -23,10 +23,10 @@ int main()
 {
     using namespace quick_shell;
     auto stdInInput = input::makeStdInTextInput(input::TextInputStyle(), true);
-#if 1
+#if 0
     auto &ti = *stdInInput;
 #else
-    input::MemoryTextInput ti("builtin", input::TextInputStyle(), "abcdefgh\ni\njk\tmn");
+    input::MemoryTextInput ti("builtin", input::TextInputStyle(), "w\\\nh\\\nile");
 #endif
     util::Arena arena;
     parser::Parser parser(ti, arena);

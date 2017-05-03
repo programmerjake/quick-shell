@@ -23,14 +23,14 @@ namespace ast
 void BlankOrEmpty::dump(std::ostream &os, ASTDumpState &dumpState) const
 {
     os << dumpState.indent << location
-       << ": BlankOrEmpty: " << ASTDumpState::escapedQuotedString(location.getTextInputText())
+       << ": BlankOrEmpty: " << ASTDumpState::escapedQuotedString(getRawSourceText())
        << std::endl;
 }
 
 void Blank::dump(std::ostream &os, ASTDumpState &dumpState) const
 {
     os << dumpState.indent << location
-       << ": Blank: " << ASTDumpState::escapedQuotedString(location.getTextInputText())
+       << ": Blank: " << ASTDumpState::escapedQuotedString(getRawSourceText())
        << std::endl;
 }
 }

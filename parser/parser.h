@@ -62,19 +62,75 @@ enum class ParseCommandResult
     Quit,
 };
 
+struct ParserDialect final
+{
+    input::TextInputStyle textInputStyle = input::TextInputStyle(8, true, true, true);
+    bool allowDollarSingleQuoteStrings = true;
+    constexpr ParserDialect() noexcept : ParserDialect(QuickShellDialectTag{})
+    {
+    }
+
+private:
+    struct BashDialectTag final
+    {
+    };
+    struct PosixDialectTag final
+    {
+    };
+    struct QuickShellDialectTag final
+    {
+    };
+    constexpr explicit ParserDialect(BashDialectTag) noexcept
+        : textInputStyle(8, false, false, true),
+          allowDollarSingleQuoteStrings(true)
+    {
+    }
+    constexpr explicit ParserDialect(PosixDialectTag) noexcept
+        : textInputStyle(8, false, false, true),
+          allowDollarSingleQuoteStrings(false)
+    {
+    }
+    constexpr explicit ParserDialect(QuickShellDialectTag) noexcept
+        : textInputStyle(8, true, true, true),
+          allowDollarSingleQuoteStrings(true)
+    {
+    }
+
+public:
+    /** bash compatible; includes duplicating bash bugs */
+    constexpr static ParserDialect getBashDialect() noexcept
+    {
+        return ParserDialect(BashDialectTag{});
+    }
+    /** mostly bash compatible; enables Quick Shell's extensions */
+    constexpr static ParserDialect getQuickShellDialect() noexcept
+    {
+        return ParserDialect(QuickShellDialectTag{});
+    }
+    /** Posix shell */
+    static ParserDialect getPosixDialect() noexcept
+    {
+        return ParserDialect(PosixDialectTag{});
+    }
+};
+
 class Parser final
 {
     Parser(const Parser &) = delete;
     Parser &operator=(const Parser &) = delete;
 
-public:
+private:
     input::TextInput &textInput;
     util::Arena &arena;
+    const ParserDialect dialect;
 
 public:
-    explicit Parser(input::TextInput &textInput, util::Arena &arena)
-        : textInput(textInput), arena(arena)
+    explicit Parser(input::TextInput &textInput,
+                    util::Arena &arena,
+                    const ParserDialect &dialect = ParserDialect::getQuickShellDialect())
+        : textInput(textInput), arena(arena), dialect(dialect)
     {
+        textInput.setInputStyle(dialect.textInputStyle);
     }
 
 private:
@@ -128,20 +184,22 @@ private:
     }
 
 private:
+    template <typename IteratorType>
     struct IteratorCopy final
     {
-        input::TextInput::Iterator value;
-        explicit IteratorCopy(const input::TextInput::Iterator &value) noexcept : value(value)
+        IteratorType value;
+        explicit IteratorCopy(const IteratorType &value) : value(value)
         {
         }
-        operator input::TextInput::Iterator &() noexcept
+        operator IteratorType &() noexcept
         {
             return value;
         }
     };
-    static IteratorCopy copy(const input::TextInput::Iterator &value) noexcept
+    template <typename IteratorType>
+    static IteratorCopy<IteratorType> copy(const IteratorType &value)
     {
-        return IteratorCopy(value);
+        return IteratorCopy<IteratorType>(value);
     }
 
 private:
@@ -327,7 +385,13 @@ private:
     ParseResultError parserErrorStaticString(const char(&message)[N],
                                              const input::TextInput::Iterator &iter) noexcept
     {
-        return parserErrorStaticString(message, input::SimpleLocation(iter.getIndex()));
+        return parserErrorStaticString(message, iter.getLocation());
+    }
+    template <std::size_t N>
+    ParseResultError parserErrorStaticString(
+        const char(&message)[N], const input::LineContinuationRemovingIterator &iter) noexcept
+    {
+        return parserErrorStaticString(message, iter.getLocation());
     }
     ParseResult<void> parserSuccess() noexcept
     {
@@ -340,27 +404,35 @@ private:
     }
 
 private:
+    ParseResult<> parseNewLine(input::LineContinuationRemovingIterator &textIter)
+    {
+        auto baseTextIter = textIter.getBaseIterator();
+        auto result = parseNewLine(baseTextIter);
+        if(result)
+            textIter = input::LineContinuationRemovingIterator(baseTextIter);
+        return result;
+    }
     ParseResult<> parseNewLine(input::TextInput::Iterator &textIter)
     {
         if(*textIter == '\r')
         {
             ++textIter;
-            if(textInput.getInputStyle().allowCRLFAsNewLine && *textIter == '\n')
+            if(dialect.textInputStyle.allowCRLFAsNewLine && *textIter == '\n')
             {
                 ++textIter;
                 return parserSuccess();
             }
-            if(textInput.getInputStyle().allowCRAsNewLine)
+            if(dialect.textInputStyle.allowCRAsNewLine)
                 return parserSuccess();
         }
-        if(textInput.getInputStyle().allowLFAsNewLine && *textIter == '\n')
+        if(dialect.textInputStyle.allowLFAsNewLine && *textIter == '\n')
         {
             ++textIter;
             return parserSuccess();
         }
         return parserErrorStaticString("missing newline", textIter);
     }
-    ParseResult<> parseBlank(input::TextInput::Iterator &textIter)
+    ParseResult<> parseBlank(input::LineContinuationRemovingIterator &textIter)
     {
         switch(*textIter)
         {
@@ -372,7 +444,7 @@ private:
             return parserErrorStaticString("missing blank", textIter);
         }
     }
-    ParseResult<> parseMetacharacter(input::TextInput::Iterator &textIter)
+    ParseResult<> parseMetacharacter(input::LineContinuationRemovingIterator &textIter)
     {
         switch(*textIter)
         {
@@ -405,7 +477,7 @@ private:
         }
         }
     }
-    ParseResult<> parseMetacharacterOrEOF(input::TextInput::Iterator &textIter)
+    ParseResult<> parseMetacharacterOrEOF(input::LineContinuationRemovingIterator &textIter)
     {
         if(*textIter == input::eof)
         {
@@ -414,7 +486,7 @@ private:
         }
         return parseMetacharacter(textIter);
     }
-    ParseResult<> parseNameStartCharacter(input::TextInput::Iterator &textIter)
+    ParseResult<> parseNameStartCharacter(input::LineContinuationRemovingIterator &textIter)
     {
         int ch = *textIter;
         if((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_')
@@ -424,7 +496,7 @@ private:
         }
         return parserErrorStaticString("missing name start character", textIter);
     }
-    ParseResult<> parseNameContinueCharacter(input::TextInput::Iterator &textIter)
+    ParseResult<> parseNameContinueCharacter(input::LineContinuationRemovingIterator &textIter)
     {
         int ch = *textIter;
         if(parseNameStartCharacter(copy(textIter)) || (ch >= '0' && ch <= '9'))
@@ -434,7 +506,7 @@ private:
         }
         return parserErrorStaticString("missing name continue character", textIter);
     }
-    ParseResult<> parseSimpleWordStartCharacter(input::TextInput::Iterator &textIter)
+    ParseResult<> parseSimpleWordStartCharacter(input::LineContinuationRemovingIterator &textIter)
     {
         switch(*textIter)
         {
@@ -455,7 +527,8 @@ private:
         }
         return parserErrorStaticString("missing unquoted word start character", textIter);
     }
-    ParseResult<> parseSimpleWordContinueCharacter(input::TextInput::Iterator &textIter)
+    ParseResult<> parseSimpleWordContinueCharacter(
+        input::LineContinuationRemovingIterator &textIter)
     {
         if(parseSimpleWordStartCharacter(copy(textIter)) || *textIter == '#')
         {
@@ -464,7 +537,7 @@ private:
         }
         return parserErrorStaticString("missing unquoted word continue character", textIter);
     }
-    ParseResult<> parseWordStartCharacter(input::TextInput::Iterator &textIter,
+    ParseResult<> parseWordStartCharacter(input::LineContinuationRemovingIterator &textIter,
                                           bool isInsideBackquotes)
     {
         switch(*textIter)
@@ -495,7 +568,7 @@ private:
         }
         return parserErrorStaticString("missing word start character", textIter);
     }
-    ParseResult<> parseUnquotedWordEndCharacter(input::TextInput::Iterator &textIter,
+    ParseResult<> parseUnquotedWordEndCharacter(input::LineContinuationRemovingIterator &textIter,
                                                 bool isInsideBackquotes)
     {
         switch(*textIter)
@@ -521,7 +594,8 @@ private:
         }
         return parserErrorStaticString("missing unquoted word end character", textIter);
     }
-    ParseResult<int> parseDigit(input::TextInput::Iterator &textIter, std::size_t base = 10)
+    ParseResult<int> parseDigit(input::LineContinuationRemovingIterator &textIter,
+                                std::size_t base = 10)
     {
         assert(base >= 2 && base <= 36);
         int ch = *textIter;
@@ -560,7 +634,7 @@ private:
             base);
     }
     template <typename NumberType = unsigned long>
-    ParseResult<NumberType> parseSimpleNumber(input::TextInput::Iterator &textIter,
+    ParseResult<NumberType> parseSimpleNumber(input::LineContinuationRemovingIterator &textIter,
                                               std::size_t base,
                                               std::size_t minDigitCount,
                                               std::size_t maxDigitCount)
@@ -585,17 +659,19 @@ private:
             textIter = textIter2;
             digitCount++;
             int digitValue = digitResult.get();
-            if(retval > maxValueOverBase || (retval == maxValueOverBase && digitValue > maxValueModBase))
-            	return parserErrorStaticString("number too big", startLocation);
+            if(retval > maxValueOverBase
+               || (retval == maxValueOverBase && digitValue > maxValueModBase))
+                return parserErrorStaticString("number too big", startLocation);
             retval *= base;
             retval += digitValue;
         }
         return parserSuccess(retval);
     }
-    ParseResult<util::ArenaPtr<ast::Word>> parseWord(input::TextInput::Iterator &textIter,
-                                                     bool isInsideBackquotes,
-                                                     bool checkForVariableAssignment,
-                                                     bool checkForReservedWords)
+    ParseResult<util::ArenaPtr<ast::Word>> parseWord(
+        input::LineContinuationRemovingIterator &textIter,
+        bool isInsideBackquotes,
+        bool checkForVariableAssignment,
+        bool checkForReservedWords)
     {
         auto wordStartLocation = textIter.getLocation();
         if(!parseWordStartCharacter(copy(textIter), isInsideBackquotes))
@@ -649,16 +725,7 @@ private:
                 auto escapeStartLocation = textIter.getLocation();
                 auto escapeStartTextIter = textIter;
                 ++textIter;
-                auto textIter2 = textIter;
-                if(parseNewLine(textIter2))
-                {
-                    textIter = textIter2;
-                    wordParts.push_back(
-                        arena.allocate<ast::LineContinuationWordPart<ast::WordPart::QuoteKind::
-                                                                         Unquoted>>(
-                            input::LocationSpan(escapeStartLocation, textIter.getLocation())));
-                }
-                else if(*textIter != input::eof)
+                if(*textIter != input::eof)
                 {
                     char value = *textIter;
                     ++textIter;
@@ -699,6 +766,26 @@ private:
                             input::LocationSpan(closingQuoteStartLocation,
                                                 textIter.getLocation())));
             }
+            else if(*textIter == '$')
+            {
+                auto dollarSignLocation = textIter.getLocation();
+                ++textIter;
+                if(dialect.allowDollarSingleQuoteStrings && *textIter == '\'')
+                {
+                    ++textIter;
+                    wordParts.push_back(
+                        arena.allocate<ast::QuoteWordPart<true,
+                                                          ast::WordPart::QuoteKind::
+                                                              EscapeInterpretingSingleQuote>>(
+                            input::LocationSpan(dollarSignLocation, textIter.getLocation())));
+                    auto startLocation = textIter.getLocation();
+                    UNIMPLEMENTED();
+                }
+                else
+                {
+                    UNIMPLEMENTED();
+                }
+            }
             else
             {
                 UNIMPLEMENTED();
@@ -706,42 +793,17 @@ private:
         }
         if(wordParts.empty())
             return parserErrorStaticString("missing word", textIter);
-        if(checkForReservedWords && !wordParts.empty())
+        if(checkForReservedWords && wordParts.size() == 1)
         {
-            std::string wordText, temp;
-            bool couldBeReservedWord = true;
-            for(auto &wordPart : wordParts)
+            auto &wordPart = wordParts.front();
+            if(util::dynamic_pointer_cast<ast::TextWordPart<ast::WordPart::QuoteKind::Unquoted>>(
+                   wordPart))
             {
-                if(util::
-                       dynamic_pointer_cast<ast::TextWordPart<ast::WordPart::QuoteKind::Unquoted>>(
-                           wordPart))
-                {
-                    // use temp so we don't have to reallocate as often
-                    temp = wordPart->getSourceText(std::move(temp));
-                    wordText += temp;
-                }
-                else if(!util::
-                            dynamic_pointer_cast<ast::LineContinuationWordPart<ast::WordPart::
-                                                                                   QuoteKind::
-                                                                                       Unquoted>>(
-                                wordPart))
-                {
-                    couldBeReservedWord = false;
-                    break;
-                }
-            }
-            if(couldBeReservedWord)
-            {
-                auto result = stringToReservedWord(wordText);
+                auto result = stringToReservedWord(wordPart->getSourceText());
                 if(result.is<ReservedWord>())
                 {
-                    auto startLocation = wordParts.front()->location.begin();
-                    auto endLocation = wordParts.back()->location.end();
-                    wordParts.resize(1);
-                    wordParts.front() = ast::GenericReservedWordPart::make(
-                        arena,
-                        input::LocationSpan(startLocation, endLocation),
-                        result.get<ReservedWord>());
+                    wordPart = ast::GenericReservedWordPart::make(
+                        arena, wordPart->location, result.get<ReservedWord>());
                 }
             }
         }

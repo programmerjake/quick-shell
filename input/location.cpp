@@ -44,18 +44,34 @@ std::ostream &operator<<(std::ostream &os, const SimpleLocationSpan &v)
 
 std::string LocationSpan::getTextInputText(std::string bufferSource, char replacementForEOF) const
 {
-	std::string &retval = bufferSource;
+    std::string &retval = bufferSource;
+    assert(input);
+    retval.reserve(size());
+    for(auto iter = LineContinuationRemovingIterator(input->iteratorAt(beginIndex));
+        iter.getBaseIterator().getIndex() < endIndex;
+        ++iter)
+    {
+        int ch = *iter;
+        if(ch == eof)
+            ch = static_cast<unsigned char>(replacementForEOF);
+        retval += static_cast<char>(ch);
+    }
+    return std::move(retval);
+}
+
+std::string LocationSpan::getRawTextInputText(std::string bufferSource,
+                                              char replacementForEOF) const
+{
+    std::string &retval = bufferSource;
     assert(input);
     retval.resize(size());
     auto iter = input->iteratorAt(beginIndex);
-    for(std::size_t i = 0; i < size(); i++)
+    for(std::size_t i = 0; i < size(); i++, ++iter)
     {
-    	int ch = *iter;
-    	if(ch == eof)
-    		ch = static_cast<unsigned char>(replacementForEOF);
-    	retval[i] = ch;
-    	if(i + 1 < size()) // so we don't increment the iterator past the end
-    		++iter;
+        int ch = *iter;
+        if(ch == eof)
+            ch = static_cast<unsigned char>(replacementForEOF);
+        retval[i] = ch;
     }
     return std::move(retval);
 }

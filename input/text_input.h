@@ -53,6 +53,16 @@ struct TextInputStyle final
     constexpr TextInputStyle() noexcept : TextInputStyle(defaultTabSize)
     {
     }
+    constexpr bool operator==(const TextInputStyle &rt) const noexcept
+    {
+        return tabSize == rt.tabSize && allowCRLFAsNewLine == rt.allowCRLFAsNewLine
+               && allowCRAsNewLine == rt.allowCRAsNewLine
+               && allowLFAsNewLine == rt.allowLFAsNewLine;
+    }
+    constexpr bool operator!=(const TextInputStyle &rt) const noexcept
+    {
+        return !operator==(rt);
+    }
 };
 
 constexpr bool isNewLine(int ch, const TextInputStyle &inputStyle) noexcept
@@ -339,6 +349,8 @@ public:
     }
     void setInputStyle(const TextInputStyle &newInputStyle)
     {
+        if(inputStyle == newInputStyle)
+            return;
         inputStyle = newInputStyle;
         lineStartIndexes.clear();
         validLineStartIndexesIndex = 0;
@@ -483,7 +495,7 @@ public:
         }
         Location getLocation() const noexcept
         {
-        	return Location(index, input);
+            return Location(index, input);
         }
     };
     Iterator begin()
@@ -555,6 +567,104 @@ public:
     LocationSpan getLocationSpan(std::size_t beginIndex, std::size_t endIndex) noexcept
     {
         return LocationSpan(beginIndex, endIndex, this);
+    }
+};
+
+class LineContinuationRemovingIterator final
+{
+public:
+    typedef std::ptrdiff_t difference_type;
+    typedef int value_type;
+    typedef const int *pointer;
+    typedef const int &reference;
+    typedef std::input_iterator_tag iterator_category;
+
+private:
+    TextInput::Iterator iter;
+    void moveToValidLocation()
+    {
+        auto textInputStyle = iter.getLocation().input->getInputStyle();
+        while(*iter == '\\')
+        {
+            auto iter2 = iter;
+            ++iter2;
+            if(*iter2 == '\r')
+            {
+                if(textInputStyle.allowCRLFAsNewLine)
+                {
+                    auto iter3 = iter2;
+                    ++iter3;
+                    if(*iter3 == '\n')
+                    {
+                        iter = iter3;
+                        ++iter;
+                        continue;
+                    }
+                }
+                if(textInputStyle.allowCRAsNewLine)
+                {
+                    iter = iter2;
+                    ++iter;
+                    continue;
+                }
+            }
+            if(textInputStyle.allowLFAsNewLine && *iter2 == '\n')
+            {
+                iter = iter2;
+                ++iter;
+                continue;
+            }
+            break;
+        }
+    }
+
+public:
+    explicit LineContinuationRemovingIterator(const TextInput::Iterator &iter) noexcept : iter(iter)
+    {
+        moveToValidLocation();
+    }
+    LineContinuationRemovingIterator() noexcept : iter()
+    {
+    }
+    const int *operator->()
+    {
+        return iter.operator->();
+    }
+    const int &operator*()
+    {
+        return *iter;
+    }
+    LineContinuationRemovingIterator &operator++()
+    {
+        ++iter;
+        moveToValidLocation();
+        return *this;
+    }
+    LineContinuationRemovingIterator operator++(int)
+    {
+        auto retval = *this;
+        operator++();
+        return retval;
+    }
+    bool operator==(const LineContinuationRemovingIterator &rt) const noexcept
+    {
+        return iter == rt.iter;
+    }
+    bool operator!=(const LineContinuationRemovingIterator &rt) const noexcept
+    {
+        return iter != rt.iter;
+    }
+    Location getLocation() const noexcept
+    {
+        return iter.getLocation();
+    }
+    TextInput::Iterator getBaseIterator() const noexcept
+    {
+        return iter;
+    }
+    explicit operator TextInput::Iterator() const noexcept
+    {
+        return iter;
     }
 };
 }

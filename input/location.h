@@ -259,10 +259,19 @@ struct LocationSpan : public SimpleLocationSpan
     {
         return begin();
     }
+    /** line continuations are removed */
     std::string getTextInputText(std::string bufferSource, char replacementForEOF = '\0') const;
+    /** line continuations are removed */
     std::string getTextInputText(char replacementForEOF = '\0') const
     {
         return getTextInputText(std::string(), replacementForEOF);
+    }
+    /** line continuations are not removed */
+    std::string getRawTextInputText(std::string bufferSource, char replacementForEOF = '\0') const;
+    /** line continuations are not removed */
+    std::string getRawTextInputText(char replacementForEOF = '\0') const
+    {
+        return getRawTextInputText(std::string(), replacementForEOF);
     }
     friend std::ostream &operator<<(std::ostream &os, const LocationSpan &v);
     friend constexpr bool operator==(const LocationSpan &a, const LocationSpan &b) noexcept
