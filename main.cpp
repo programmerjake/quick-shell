@@ -15,6 +15,7 @@
  */
 #include "input/stdin.h"
 #include "input/memory.h"
+#include "input/file.h"
 #include <iostream>
 #include <sstream>
 #include "parser/parser.h"
@@ -23,10 +24,12 @@ int main()
 {
     using namespace quick_shell;
     auto stdInInput = input::makeStdInTextInput(input::TextInputStyle(), true);
-#if 0
+#if 1
     auto &ti = *stdInInput;
-#else
+#elif 0
     input::MemoryTextInput ti("builtin", input::TextInputStyle(), R"($'\c\\')");
+#else
+    input::FileTextInput ti("test.sh");
 #endif
     util::Arena arena;
     parser::Parser parser(ti, arena, parser::ParserDialect::getBashDialect());

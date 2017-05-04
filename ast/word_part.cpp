@@ -27,7 +27,14 @@ void AssignmentVariableNameWordPart::dump(std::ostream &os, ASTDumpState &dumpSt
 
 void AssignmentEqualSignWordPart::dump(std::ostream &os, ASTDumpState &dumpState) const
 {
-    os << dumpState.indent << location << ": AssignmentEqualSignWordPart: "
+    os << dumpState.indent << location
+       << ": AssignmentEqualSignWordPart: " << ASTDumpState::escapedQuotedString(getRawSourceText())
+       << std::endl;
+}
+
+void AssignmentPlusEqualSignWordPart::dump(std::ostream &os, ASTDumpState &dumpState) const
+{
+    os << dumpState.indent << location << ": AssignmentPlusEqualSignWordPart: "
        << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
 }
 }

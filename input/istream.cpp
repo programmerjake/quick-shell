@@ -21,7 +21,8 @@ namespace quick_shell
 {
 namespace input
 {
-std::size_t IStreamTextInput::read(std::size_t startIndex,
+std::size_t IStreamTextInput::read(std::istream &is,
+                                   std::size_t startIndex,
                                    unsigned char *buffer,
                                    std::size_t bufferSize)
 {
@@ -53,6 +54,13 @@ std::size_t IStreamTextInput::read(std::size_t startIndex,
     }
     auto readCount = is.readsome(reinterpret_cast<char *>(buffer) + 1, bufferSize - 1);
     return readCount + 1;
+}
+
+std::size_t IStreamTextInput::read(std::size_t startIndex,
+                                   unsigned char *buffer,
+                                   std::size_t bufferSize)
+{
+    return read(is, startIndex, buffer, bufferSize);
 }
 }
 }

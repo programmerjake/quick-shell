@@ -259,12 +259,13 @@ private:
     void updateLineStartIndexesHelper(Fn &&fn);
 
 public:
-    explicit TextInput(std::string name,
-                       const TextInputStyle &inputStyle,
-                       std::shared_ptr<const unsigned char> memory,
-                       std::size_t memorySize,
-                       std::set<std::size_t> eofPositions,
-                       bool retryAfterEOF)
+    explicit TextInput(
+        std::string name,
+        const TextInputStyle &inputStyle,
+        std::shared_ptr<const unsigned char> memory, // initial text, appended to by read
+        std::size_t memorySize,
+        std::set<std::size_t> eofPositions, // EOF positions for initial text
+        bool retryAfterEOF)
         : retryAfterEOF(retryAfterEOF),
           inputStyle(inputStyle),
           name(std::move(name)),
@@ -293,9 +294,9 @@ public:
     }
     explicit TextInput(std::string name,
                        const TextInputStyle &inputStyle,
-                       const unsigned char *memory,
+                       const unsigned char *memory, // initial text, appended to by read
                        std::size_t memorySize,
-                       std::set<std::size_t> eofPositions,
+                       std::set<std::size_t> eofPositions, // EOF positions for initial text
                        bool retryAfterEOF)
         : retryAfterEOF(retryAfterEOF),
           inputStyle(inputStyle),
@@ -397,6 +398,13 @@ public:
             return eof;
         return readNonspecial(index);
     }
+    /** iterator for TextInput.
+     *
+     * Never reaches `TextInput::end()`; `operator*()` will just keep returning `input::eof`
+     * forever. Behaves as a C++ forward iterator except for the requirement that for two iterators
+     * `a` and `b`, if `a == b` then `*a` and `*b` will be references bound to the same
+     * variable.
+     * */
     class Iterator final
     {
         friend class TextInput;
@@ -506,6 +514,10 @@ public:
     {
         return Iterator(this, index);
     }
+    /** returns the end iterator.
+     *
+     * The end iterator can never be reached by incrementing: see `Iterator`'s documentation.
+     * */
     Iterator end()
     {
         return Iterator();
@@ -631,20 +643,20 @@ public:
     }
     const int *operator->() const
     {
-    	if(!isAtValidLocation)
-    		moveToValidLocation();
+        if(!isAtValidLocation)
+            moveToValidLocation();
         return iter.operator->();
     }
     const int &operator*() const
     {
-    	if(!isAtValidLocation)
-    		moveToValidLocation();
+        if(!isAtValidLocation)
+            moveToValidLocation();
         return *iter;
     }
     LineContinuationRemovingIterator &operator++()
     {
-    	if(!isAtValidLocation)
-    		moveToValidLocation();
+        if(!isAtValidLocation)
+            moveToValidLocation();
         ++iter;
         isAtValidLocation = false;
         return *this;
@@ -657,34 +669,34 @@ public:
     }
     bool operator==(const LineContinuationRemovingIterator &rt) const
     {
-    	if(iter == rt.iter)
-    		return true;
-    	if(!isAtValidLocation)
-    		moveToValidLocation();
-    	if(!rt.isAtValidLocation)
-    		rt.moveToValidLocation();
+        if(iter == rt.iter)
+            return true;
+        if(!isAtValidLocation)
+            moveToValidLocation();
+        if(!rt.isAtValidLocation)
+            rt.moveToValidLocation();
         return iter == rt.iter;
     }
     bool operator!=(const LineContinuationRemovingIterator &rt) const
     {
-    	return !operator==(rt);
+        return !operator==(rt);
     }
     Location getLocation() const
     {
-    	if(!isAtValidLocation)
-    		moveToValidLocation();
+        if(!isAtValidLocation)
+            moveToValidLocation();
         return iter.getLocation();
     }
     TextInput::Iterator getBaseIterator() const
     {
-    	if(!isAtValidLocation)
-    		moveToValidLocation();
+        if(!isAtValidLocation)
+            moveToValidLocation();
         return iter;
     }
     explicit operator TextInput::Iterator() const
     {
-    	if(!isAtValidLocation)
-    		moveToValidLocation();
+        if(!isAtValidLocation)
+            moveToValidLocation();
         return iter;
     }
 };

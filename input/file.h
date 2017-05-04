@@ -13,26 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef INPUT_ISTREAM_H_
-#define INPUT_ISTREAM_H_
+#ifndef INPUT_FILE_H_
+#define INPUT_FILE_H_
 
-#include <iosfwd>
+#include <memory>
 #include "text_input.h"
+#include "../util/string_view.h"
 
 namespace quick_shell
 {
 namespace input
 {
-class IStreamTextInput final : public TextInput
+class FileTextInput final : public TextInput
 {
 private:
-    std::istream &is;
+    struct Implementation;
 
-public:
-    static std::size_t read(std::istream &is,
-                            std::size_t startIndex,
-                            unsigned char *buffer,
-                            std::size_t bufferSize);
+private:
+    std::shared_ptr<Implementation> implementation;
 
 protected:
     virtual std::size_t read(std::size_t startIndex,
@@ -40,15 +38,18 @@ protected:
                              std::size_t bufferSize) override;
 
 public:
-    IStreamTextInput(std::string name,
-                     const TextInputStyle &inputStyle,
-                     std::istream &is,
-                     bool retryAfterEOF)
-        : TextInput(std::move(name), inputStyle, retryAfterEOF), is(is)
+    FileTextInput(util::string_view name,
+                  util::string_view fileName,
+                  const TextInputStyle &inputStyle = TextInputStyle(),
+                  bool retryAfterEOF = false);
+    explicit FileTextInput(util::string_view name,
+                           const TextInputStyle &inputStyle = TextInputStyle(),
+                           bool retryAfterEOF = false)
+        : FileTextInput(name, name, inputStyle, retryAfterEOF)
     {
     }
 };
 }
 }
 
-#endif /* INPUT_ISTREAM_H_ */
+#endif /* INPUT_FILE_H_ */

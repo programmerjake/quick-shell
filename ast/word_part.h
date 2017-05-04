@@ -176,16 +176,61 @@ struct AssignmentVariableNameWordPart final : public GenericVariableNameWordPart
     virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override;
 };
 
-struct AssignmentEqualSignWordPart final : public GenericTextWordPart
+struct AssignmentOperatorWordPart : public GenericTextWordPart
 {
     using GenericTextWordPart::GenericTextWordPart;
-    virtual QuoteKind getQuoteKind() const noexcept override
+    enum class AssignmentOperator
+    {
+        Equals,
+        PlusEquals,
+    };
+    static util::string_view getAssignmentOperatorString(AssignmentOperator op) noexcept
+    {
+        switch(op)
+        {
+        case AssignmentOperator::Equals:
+            return "Equals";
+        case AssignmentOperator::PlusEquals:
+            return "PlusEquals";
+        }
+        UNREACHABLE();
+        return "";
+    }
+    virtual AssignmentOperator getAssignmentOperator() const noexcept = 0;
+    util::string_view getAssignmentOperatorString() const noexcept
+    {
+        return getAssignmentOperatorString(getAssignmentOperator());
+    }
+    virtual QuoteKind getQuoteKind() const noexcept override final
     {
         return QuoteKind::Unquoted;
+    }
+};
+
+struct AssignmentEqualSignWordPart final : public AssignmentOperatorWordPart
+{
+    using AssignmentOperatorWordPart::AssignmentOperatorWordPart;
+    virtual AssignmentOperator getAssignmentOperator() const noexcept override
+    {
+        return AssignmentOperator::Equals;
     }
     virtual util::ArenaPtr<WordPart> duplicate(util::Arena &arena) const override
     {
         return arena.allocate<AssignmentEqualSignWordPart>(*this);
+    }
+    virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override;
+};
+
+struct AssignmentPlusEqualSignWordPart final : public AssignmentOperatorWordPart
+{
+    using AssignmentOperatorWordPart::AssignmentOperatorWordPart;
+    virtual AssignmentOperator getAssignmentOperator() const noexcept override
+    {
+        return AssignmentOperator::PlusEquals;
+    }
+    virtual util::ArenaPtr<WordPart> duplicate(util::Arena &arena) const override
+    {
+        return arena.allocate<AssignmentPlusEqualSignWordPart>(*this);
     }
     virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override;
 };
