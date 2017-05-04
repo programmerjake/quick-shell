@@ -580,8 +580,9 @@ public:
     typedef std::input_iterator_tag iterator_category;
 
 private:
-    TextInput::Iterator iter;
-    void moveToValidLocation()
+    mutable TextInput::Iterator iter;
+    mutable bool isAtValidLocation;
+    void moveToValidLocation() const
     {
         auto textInputStyle = iter.getLocation().input->getInputStyle();
         while(*iter == '\\')
@@ -616,28 +617,36 @@ private:
             }
             break;
         }
+        isAtValidLocation = true;
     }
 
 public:
-    explicit LineContinuationRemovingIterator(const TextInput::Iterator &iter) noexcept : iter(iter)
-    {
-        moveToValidLocation();
-    }
-    LineContinuationRemovingIterator() noexcept : iter()
+    explicit LineContinuationRemovingIterator(const TextInput::Iterator &iter) noexcept
+        : iter(iter),
+          isAtValidLocation(false)
     {
     }
-    const int *operator->()
+    LineContinuationRemovingIterator() noexcept : iter(), isAtValidLocation(true)
     {
+    }
+    const int *operator->() const
+    {
+    	if(!isAtValidLocation)
+    		moveToValidLocation();
         return iter.operator->();
     }
-    const int &operator*()
+    const int &operator*() const
     {
+    	if(!isAtValidLocation)
+    		moveToValidLocation();
         return *iter;
     }
     LineContinuationRemovingIterator &operator++()
     {
+    	if(!isAtValidLocation)
+    		moveToValidLocation();
         ++iter;
-        moveToValidLocation();
+        isAtValidLocation = false;
         return *this;
     }
     LineContinuationRemovingIterator operator++(int)
@@ -646,24 +655,36 @@ public:
         operator++();
         return retval;
     }
-    bool operator==(const LineContinuationRemovingIterator &rt) const noexcept
+    bool operator==(const LineContinuationRemovingIterator &rt) const
     {
+    	if(iter == rt.iter)
+    		return true;
+    	if(!isAtValidLocation)
+    		moveToValidLocation();
+    	if(!rt.isAtValidLocation)
+    		rt.moveToValidLocation();
         return iter == rt.iter;
     }
-    bool operator!=(const LineContinuationRemovingIterator &rt) const noexcept
+    bool operator!=(const LineContinuationRemovingIterator &rt) const
     {
-        return iter != rt.iter;
+    	return !operator==(rt);
     }
-    Location getLocation() const noexcept
+    Location getLocation() const
     {
+    	if(!isAtValidLocation)
+    		moveToValidLocation();
         return iter.getLocation();
     }
-    TextInput::Iterator getBaseIterator() const noexcept
+    TextInput::Iterator getBaseIterator() const
     {
+    	if(!isAtValidLocation)
+    		moveToValidLocation();
         return iter;
     }
-    explicit operator TextInput::Iterator() const noexcept
+    explicit operator TextInput::Iterator() const
     {
+    	if(!isAtValidLocation)
+    		moveToValidLocation();
         return iter;
     }
 };

@@ -32,6 +32,7 @@
 #include "../ast/word.h"
 #include "../ast/word_part.h"
 #include "../util/arena.h"
+#include "../util/unicode.h"
 
 namespace quick_shell
 {
@@ -64,8 +65,9 @@ enum class ParseCommandResult
 
 struct ParserDialect final
 {
-    input::TextInputStyle textInputStyle = input::TextInputStyle(8, true, true, true);
-    bool allowDollarSingleQuoteStrings = true;
+    input::TextInputStyle textInputStyle;
+    bool allowDollarSingleQuoteStrings;
+    bool duplicateDollarSingleQuoteStringBashParsingFlaws;
     constexpr ParserDialect() noexcept : ParserDialect(QuickShellDialectTag{})
     {
     }
@@ -82,17 +84,20 @@ private:
     };
     constexpr explicit ParserDialect(BashDialectTag) noexcept
         : textInputStyle(8, false, false, true),
-          allowDollarSingleQuoteStrings(true)
+          allowDollarSingleQuoteStrings(true),
+          duplicateDollarSingleQuoteStringBashParsingFlaws(true)
     {
     }
     constexpr explicit ParserDialect(PosixDialectTag) noexcept
         : textInputStyle(8, false, false, true),
-          allowDollarSingleQuoteStrings(false)
+          allowDollarSingleQuoteStrings(false),
+          duplicateDollarSingleQuoteStringBashParsingFlaws(false)
     {
     }
     constexpr explicit ParserDialect(QuickShellDialectTag) noexcept
         : textInputStyle(8, true, true, true),
-          allowDollarSingleQuoteStrings(true)
+          allowDollarSingleQuoteStrings(true),
+          duplicateDollarSingleQuoteStringBashParsingFlaws(false)
     {
     }
 
@@ -594,8 +599,8 @@ private:
         }
         return parserErrorStaticString("missing unquoted word end character", textIter);
     }
-    ParseResult<int> parseDigit(input::LineContinuationRemovingIterator &textIter,
-                                std::size_t base = 10)
+    template <typename IteratorType>
+    ParseResult<int> parseDigit(IteratorType &textIter, std::size_t base = 10)
     {
         assert(base >= 2 && base <= 36);
         int ch = *textIter;
@@ -633,8 +638,8 @@ private:
             textIter.getLocation(),
             base);
     }
-    template <typename NumberType = unsigned long>
-    ParseResult<NumberType> parseSimpleNumber(input::LineContinuationRemovingIterator &textIter,
+    template <typename NumberType = unsigned long, typename IteratorType>
+    ParseResult<NumberType> parseSimpleNumber(IteratorType &textIter,
                                               std::size_t base,
                                               std::size_t minDigitCount,
                                               std::size_t maxDigitCount)
@@ -654,13 +659,14 @@ private:
             {
                 if(digitCount >= minDigitCount)
                     break;
-                return parserError(digitResult.value.get<ParseResultError>());
+                return parserError<NumberType>(digitResult.value.template get<ParseResultError>());
             }
             textIter = textIter2;
             digitCount++;
             int digitValue = digitResult.get();
             if(retval > maxValueOverBase
-               || (retval == maxValueOverBase && digitValue > maxValueModBase))
+               || (retval == maxValueOverBase
+                   && static_cast<unsigned>(digitValue) > maxValueModBase))
                 return parserErrorStaticString("number too big", startLocation);
             retval *= base;
             retval += digitValue;
@@ -744,21 +750,25 @@ private:
             else if(*textIter == '\'')
             {
                 auto openingQuoteStartLocation = textIter.getLocation();
-                ++textIter;
+                auto baseTextIter = textIter.getBaseIterator();
+                ++baseTextIter;
                 wordParts.push_back(
                     arena.allocate<ast::QuoteWordPart<true, ast::WordPart::QuoteKind::SingleQuote>>(
-                        input::LocationSpan(openingQuoteStartLocation, textIter.getLocation())));
-                auto quotedTextStartLocation = textIter.getLocation();
-                while(*textIter != '\'')
+                        input::LocationSpan(openingQuoteStartLocation,
+                                            baseTextIter.getLocation())));
+                auto quotedTextStartLocation = baseTextIter.getLocation();
+                while(*baseTextIter != '\'')
                 {
-                    if(*textIter == input::eof)
-                        return parserErrorStaticString("missing closing \'", textIter);
-                    ++textIter;
+                    if(*baseTextIter == input::eof)
+                        return parserErrorStaticString("missing closing \'",
+                                                       quotedTextStartLocation);
+                    ++baseTextIter;
                 }
                 wordParts.push_back(
                     arena.allocate<ast::TextWordPart<ast::WordPart::QuoteKind::SingleQuote>>(
-                        input::LocationSpan(quotedTextStartLocation, textIter.getLocation())));
-                auto closingQuoteStartLocation = textIter.getLocation();
+                        input::LocationSpan(quotedTextStartLocation, baseTextIter.getLocation())));
+                auto closingQuoteStartLocation = baseTextIter.getLocation();
+                textIter = input::LineContinuationRemovingIterator(baseTextIter);
                 ++textIter;
                 wordParts.push_back(
                     arena
@@ -772,14 +782,345 @@ private:
                 ++textIter;
                 if(dialect.allowDollarSingleQuoteStrings && *textIter == '\'')
                 {
-                    ++textIter;
+                    typedef ast::TextWordPart<ast::WordPart::QuoteKind::
+                                                  EscapeInterpretingSingleQuote> TextWordPartType;
+                    typedef ast::SimpleEscapeSequenceWordPart<ast::WordPart::QuoteKind::
+                                                                  EscapeInterpretingSingleQuote>
+                        SimpleEscapeSequenceWordPartType;
+                    typedef ast::HexEscapeSequenceWordPart<ast::WordPart::QuoteKind::
+                                                               EscapeInterpretingSingleQuote>
+                        HexEscapeSequenceWordPartType;
+                    typedef ast::OctalEscapeSequenceWordPart<ast::WordPart::QuoteKind::
+                                                                 EscapeInterpretingSingleQuote>
+                        OctalEscapeSequenceWordPartType;
+                    typedef ast::UnicodeEscapeSequenceWordPart<ast::WordPart::QuoteKind::
+                                                                   EscapeInterpretingSingleQuote>
+                        UnicodeEscapeSequenceWordPartType;
+                    typedef ast::BashBugEscapeSequenceWordPart<ast::WordPart::QuoteKind::
+                                                                   EscapeInterpretingSingleQuote>
+                        BashBugEscapeSequenceWordPartType;
+                    auto baseTextIter = textIter.getBaseIterator();
+                    ++baseTextIter;
                     wordParts.push_back(
                         arena.allocate<ast::QuoteWordPart<true,
                                                           ast::WordPart::QuoteKind::
                                                               EscapeInterpretingSingleQuote>>(
-                            input::LocationSpan(dollarSignLocation, textIter.getLocation())));
-                    auto startLocation = textIter.getLocation();
-                    UNIMPLEMENTED();
+                            input::LocationSpan(dollarSignLocation, baseTextIter.getLocation())));
+                    auto quotedTextStartLocation = baseTextIter.getLocation();
+                    auto wordPartStartLocation = quotedTextStartLocation;
+                    while(*baseTextIter != '\'')
+                    {
+                        if(*baseTextIter == input::eof)
+                            return parserErrorStaticString("missing closing \'",
+                                                           quotedTextStartLocation);
+                        if(*baseTextIter == '\\')
+                        {
+                            if(wordPartStartLocation != baseTextIter.getLocation())
+                                wordParts.push_back(
+                                    arena.allocate<TextWordPartType>(input::LocationSpan(
+                                        wordPartStartLocation, baseTextIter.getLocation())));
+                            wordPartStartLocation = baseTextIter.getLocation();
+                            ++baseTextIter;
+                            switch(*baseTextIter)
+                            {
+                            case input::eof:
+                                return parserErrorStaticString("missing closing \'",
+                                                               quotedTextStartLocation);
+                            case 'a':
+                            {
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     '\a'));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 'b':
+                            {
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     '\b'));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 'e':
+                            case 'E':
+                            {
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     '\x1B'));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 'f':
+                            {
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     '\f'));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 'n':
+                            {
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     '\n'));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 'r':
+                            {
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     '\r'));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 't':
+                            {
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     '\t'));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 'v':
+                            {
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     '\v'));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case '\\':
+                            case '\'':
+                            case '\"':
+                            case '?':
+                            {
+                                char ch = *baseTextIter;
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     ch));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 'x': // hex
+                            {
+                                ++baseTextIter;
+                                auto iter2 = baseTextIter;
+                                auto value = parseSimpleNumber(iter2, 0x10, 1, 2);
+                                if(!value)
+                                {
+                                    auto locationSpan = input::LocationSpan(
+                                        wordPartStartLocation, baseTextIter.getLocation());
+                                    wordParts.push_back(
+                                        arena.allocate<TextWordPartType>(locationSpan));
+                                }
+                                else
+                                {
+                                    baseTextIter = iter2;
+                                    auto locationSpan = input::LocationSpan(
+                                        wordPartStartLocation, baseTextIter.getLocation());
+                                    wordParts.push_back(
+                                        arena.allocate<HexEscapeSequenceWordPartType>(locationSpan,
+                                                                                      value.get()));
+                                }
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case '0':
+                            case '1':
+                            case '2':
+                            case '3':
+                            case '4':
+                            case '5':
+                            case '6':
+                            case '7': // octal
+                            {
+                                auto value = parseSimpleNumber(baseTextIter, 8, 1, 3);
+                                assert(value); // we already have the first digit
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(arena.allocate<OctalEscapeSequenceWordPartType>(
+                                    locationSpan, value.get() & 0xFF));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 'u':
+                            case 'U':
+                            {
+                                auto escapeChar = *baseTextIter;
+                                ++baseTextIter;
+                                auto iter2 = baseTextIter;
+                                auto value =
+                                    parseSimpleNumber(iter2, 0x10, 1, escapeChar == 'U' ? 8 : 4);
+                                if(!value)
+                                {
+                                    auto locationSpan = input::LocationSpan(
+                                        wordPartStartLocation, baseTextIter.getLocation());
+                                    wordParts.push_back(
+                                        arena.allocate<TextWordPartType>(locationSpan));
+                                }
+                                else
+                                {
+                                    baseTextIter = iter2;
+                                    auto locationSpan = input::LocationSpan(
+                                        wordPartStartLocation, baseTextIter.getLocation());
+                                    wordParts.push_back(
+                                        arena.allocate<UnicodeEscapeSequenceWordPartType>(
+                                            locationSpan, util::encodeUTF8(value.get())));
+                                }
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case '\x01':
+                            {
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                if(dialect.duplicateDollarSingleQuoteStringBashParsingFlaws)
+                                {
+                                    wordParts.push_back(
+                                        arena.allocate<BashBugEscapeSequenceWordPartType>(
+                                            locationSpan, "\\\x01\x01"));
+                                }
+                                else
+                                {
+                                    wordParts.push_back(
+                                        arena.allocate<TextWordPartType>(locationSpan));
+                                }
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            case 'c':
+                            {
+                                ++baseTextIter;
+                                switch(*baseTextIter)
+                                {
+                                case input::eof:
+                                case '\'':
+                                {
+                                    auto locationSpan = input::LocationSpan(
+                                        wordPartStartLocation, baseTextIter.getLocation());
+                                    wordParts.push_back(
+                                        arena.allocate<TextWordPartType>(locationSpan));
+                                    break;
+                                }
+                                case '\\':
+                                {
+                                    if(dialect.duplicateDollarSingleQuoteStringBashParsingFlaws)
+                                    {
+                                        ++baseTextIter;
+                                        if(*baseTextIter == '\\')
+                                            ++baseTextIter;
+                                        auto locationSpan = input::LocationSpan(
+                                            wordPartStartLocation, baseTextIter.getLocation());
+                                        wordParts.push_back(
+                                            arena.allocate<SimpleEscapeSequenceWordPartType>(
+                                                locationSpan, 0x1C));
+                                    }
+                                    else
+                                    {
+                                        auto locationSpan = input::LocationSpan(
+                                            wordPartStartLocation, baseTextIter.getLocation());
+                                        wordParts.push_back(
+                                            arena.allocate<TextWordPartType>(locationSpan));
+                                    }
+                                    break;
+                                }
+                                case '\x01':
+                                {
+                                    ++baseTextIter;
+                                    auto locationSpan = input::LocationSpan(
+                                        wordPartStartLocation, baseTextIter.getLocation());
+                                    if(dialect.duplicateDollarSingleQuoteStringBashParsingFlaws)
+                                    {
+                                        wordParts.push_back(
+                                            arena.allocate<BashBugEscapeSequenceWordPartType>(
+                                                locationSpan, "\x01\x01"));
+                                    }
+                                    else
+                                    {
+                                        wordParts.push_back(
+                                            arena.allocate<SimpleEscapeSequenceWordPartType>(
+                                                locationSpan, '\x01'));
+                                    }
+                                    break;
+                                }
+                                default:
+                                {
+                                    int ch = *baseTextIter;
+                                    ++baseTextIter;
+                                    auto locationSpan = input::LocationSpan(
+                                        wordPartStartLocation, baseTextIter.getLocation());
+                                    wordParts.push_back(
+                                        arena.allocate<SimpleEscapeSequenceWordPartType>(
+                                            locationSpan, ch & 0x1F));
+                                }
+                                }
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            default:
+                            {
+                                char ch = *baseTextIter;
+                                ++baseTextIter;
+                                auto locationSpan = input::LocationSpan(wordPartStartLocation,
+                                                                        baseTextIter.getLocation());
+                                wordParts.push_back(
+                                    arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan,
+                                                                                     ch));
+                                wordPartStartLocation = baseTextIter.getLocation();
+                                break;
+                            }
+                            }
+                        }
+                        else
+                        {
+                            ++baseTextIter;
+                        }
+                    }
+                    if(wordPartStartLocation != baseTextIter.getLocation())
+                        wordParts.push_back(
+                            arena.allocate<ast::TextWordPart<ast::WordPart::QuoteKind::
+                                                                 EscapeInterpretingSingleQuote>>(
+                                input::LocationSpan(wordPartStartLocation,
+                                                    baseTextIter.getLocation())));
+                    auto closingQuoteStartLocation = baseTextIter.getLocation();
+                    textIter = input::LineContinuationRemovingIterator(baseTextIter);
+                    ++textIter;
+                    wordParts.push_back(
+                        arena.allocate<ast::QuoteWordPart<false,
+                                                          ast::WordPart::QuoteKind::
+                                                              EscapeInterpretingSingleQuote>>(
+                            input::LocationSpan(closingQuoteStartLocation,
+                                                textIter.getLocation())));
                 }
                 else
                 {

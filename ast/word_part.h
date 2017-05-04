@@ -24,6 +24,7 @@
 #include "../util/string_view.h"
 #include "../util/compiler_intrinsics.h"
 #include "../parser/reserved_word.h"
+#include "../util/unicode.h"
 
 namespace quick_shell
 {
@@ -335,6 +336,150 @@ struct SimpleEscapeSequenceWordPart final : public GenericSimpleEscapeSequenceWo
     virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override
     {
         os << dumpState.indent << location << ": SimpleEscapeSequenceWordPart<"
+           << getQuoteKindString(quoteKind)
+           << ">(value=" << ASTDumpState::escapedQuotedString(getValue())
+           << "): " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
+    }
+};
+
+struct GenericBashBugEscapeSequenceWordPart : public GenericEscapeSequenceWordPart
+{
+    std::string value;
+    explicit GenericBashBugEscapeSequenceWordPart(const input::LocationSpan &location,
+                                                  std::string value) noexcept
+        : GenericEscapeSequenceWordPart(location),
+          value(std::move(value))
+    {
+    }
+    virtual util::string_view getValue() const noexcept override final
+    {
+        return value;
+    }
+};
+
+template <WordPart::QuoteKind quoteKind>
+struct BashBugEscapeSequenceWordPart final : public GenericBashBugEscapeSequenceWordPart
+{
+    using GenericBashBugEscapeSequenceWordPart::GenericBashBugEscapeSequenceWordPart;
+    virtual QuoteKind getQuoteKind() const noexcept override
+    {
+        return quoteKind;
+    }
+    virtual util::ArenaPtr<WordPart> duplicate(util::Arena &arena) const override
+    {
+        return arena.allocate<BashBugEscapeSequenceWordPart>(*this);
+    }
+    virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override
+    {
+        os << dumpState.indent << location << ": BashBugEscapeSequenceWordPart<"
+           << getQuoteKindString(quoteKind)
+           << ">(value=" << ASTDumpState::escapedQuotedString(getValue())
+           << "): " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
+    }
+};
+
+struct GenericHexEscapeSequenceWordPart : public GenericEscapeSequenceWordPart
+{
+    char value;
+    explicit GenericHexEscapeSequenceWordPart(const input::LocationSpan &location,
+                                              char value) noexcept
+        : GenericEscapeSequenceWordPart(location),
+          value(value)
+    {
+    }
+    virtual util::string_view getValue() const noexcept override final
+    {
+        return util::string_view(&value, 1);
+    }
+};
+
+template <WordPart::QuoteKind quoteKind>
+struct HexEscapeSequenceWordPart final : public GenericHexEscapeSequenceWordPart
+{
+    using GenericHexEscapeSequenceWordPart::GenericHexEscapeSequenceWordPart;
+    virtual QuoteKind getQuoteKind() const noexcept override
+    {
+        return quoteKind;
+    }
+    virtual util::ArenaPtr<WordPart> duplicate(util::Arena &arena) const override
+    {
+        return arena.allocate<HexEscapeSequenceWordPart>(*this);
+    }
+    virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override
+    {
+        os << dumpState.indent << location << ": HexEscapeSequenceWordPart<"
+           << getQuoteKindString(quoteKind)
+           << ">(value=" << ASTDumpState::escapedQuotedString(getValue())
+           << "): " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
+    }
+};
+
+struct GenericOctalEscapeSequenceWordPart : public GenericEscapeSequenceWordPart
+{
+    char value;
+    explicit GenericOctalEscapeSequenceWordPart(const input::LocationSpan &location,
+                                                char value) noexcept
+        : GenericEscapeSequenceWordPart(location),
+          value(value)
+    {
+    }
+    virtual util::string_view getValue() const noexcept override final
+    {
+        return util::string_view(&value, 1);
+    }
+};
+
+template <WordPart::QuoteKind quoteKind>
+struct OctalEscapeSequenceWordPart final : public GenericOctalEscapeSequenceWordPart
+{
+    using GenericOctalEscapeSequenceWordPart::GenericOctalEscapeSequenceWordPart;
+    virtual QuoteKind getQuoteKind() const noexcept override
+    {
+        return quoteKind;
+    }
+    virtual util::ArenaPtr<WordPart> duplicate(util::Arena &arena) const override
+    {
+        return arena.allocate<OctalEscapeSequenceWordPart>(*this);
+    }
+    virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override
+    {
+        os << dumpState.indent << location << ": OctalEscapeSequenceWordPart<"
+           << getQuoteKindString(quoteKind)
+           << ">(value=" << ASTDumpState::escapedQuotedString(getValue())
+           << "): " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
+    }
+};
+
+struct GenericUnicodeEscapeSequenceWordPart : public GenericEscapeSequenceWordPart
+{
+    util::EncodedUTF8CodePoint value;
+    explicit GenericUnicodeEscapeSequenceWordPart(const input::LocationSpan &location,
+                                                  const util::EncodedUTF8CodePoint &value) noexcept
+        : GenericEscapeSequenceWordPart(location),
+          value(value)
+    {
+    }
+    virtual util::string_view getValue() const noexcept override final
+    {
+        return value;
+    }
+};
+
+template <WordPart::QuoteKind quoteKind>
+struct UnicodeEscapeSequenceWordPart final : public GenericUnicodeEscapeSequenceWordPart
+{
+    using GenericUnicodeEscapeSequenceWordPart::GenericUnicodeEscapeSequenceWordPart;
+    virtual QuoteKind getQuoteKind() const noexcept override
+    {
+        return quoteKind;
+    }
+    virtual util::ArenaPtr<WordPart> duplicate(util::Arena &arena) const override
+    {
+        return arena.allocate<UnicodeEscapeSequenceWordPart>(*this);
+    }
+    virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override
+    {
+        os << dumpState.indent << location << ": UnicodeEscapeSequenceWordPart<"
            << getQuoteKindString(quoteKind)
            << ">(value=" << ASTDumpState::escapedQuotedString(getValue())
            << "): " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;

@@ -166,7 +166,7 @@ public:
             throw std::out_of_range("out of range in util::basic_string_view::copy");
         count = constexprMin(count, stringSize - pos);
         for(std::size_t i = 0; i < count; i++)
-            dest[i] = stringPointer[i + pos];
+            traits_type::assign(dest[i], stringPointer[i + pos]);
         return count;
     }
     constexpr basic_string_view substr(std::size_t pos = 0, std::size_t count = npos) const

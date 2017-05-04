@@ -26,9 +26,9 @@ int main()
 #if 0
     auto &ti = *stdInInput;
 #else
-    input::MemoryTextInput ti("builtin", input::TextInputStyle(), "w\\\nh\\\nile");
+    input::MemoryTextInput ti("builtin", input::TextInputStyle(), R"($'\c\\')");
 #endif
     util::Arena arena;
-    parser::Parser parser(ti, arena);
+    parser::Parser parser(ti, arena, parser::ParserDialect::getBashDialect());
     parser.test();
 }
