@@ -68,11 +68,16 @@ struct ParserDialect final
     input::TextInputStyle textInputStyle;
     bool allowDollarSingleQuoteStrings;
     bool duplicateDollarSingleQuoteStringBashParsingFlaws;
+    bool allowDollarDoubleQuoteStrings;
+    bool secureDollarDoubleQuoteStrings;
     constexpr ParserDialect() noexcept : ParserDialect(QuickShellDialectTag{})
     {
     }
 
 private:
+    struct SecureBashDialectTag final
+    {
+    };
     struct BashDialectTag final
     {
     };
@@ -82,26 +87,45 @@ private:
     struct QuickShellDialectTag final
     {
     };
+    constexpr explicit ParserDialect(SecureBashDialectTag) noexcept
+        : textInputStyle(8, false, false, true),
+          allowDollarSingleQuoteStrings(true),
+          duplicateDollarSingleQuoteStringBashParsingFlaws(true),
+          allowDollarDoubleQuoteStrings(true),
+          secureDollarDoubleQuoteStrings(true)
+    {
+    }
     constexpr explicit ParserDialect(BashDialectTag) noexcept
         : textInputStyle(8, false, false, true),
           allowDollarSingleQuoteStrings(true),
-          duplicateDollarSingleQuoteStringBashParsingFlaws(true)
+          duplicateDollarSingleQuoteStringBashParsingFlaws(true),
+          allowDollarDoubleQuoteStrings(true),
+          secureDollarDoubleQuoteStrings(false)
     {
     }
     constexpr explicit ParserDialect(PosixDialectTag) noexcept
         : textInputStyle(8, false, false, true),
           allowDollarSingleQuoteStrings(false),
-          duplicateDollarSingleQuoteStringBashParsingFlaws(false)
+          duplicateDollarSingleQuoteStringBashParsingFlaws(false),
+          allowDollarDoubleQuoteStrings(false),
+          secureDollarDoubleQuoteStrings(true)
     {
     }
     constexpr explicit ParserDialect(QuickShellDialectTag) noexcept
         : textInputStyle(8, true, true, true),
           allowDollarSingleQuoteStrings(true),
-          duplicateDollarSingleQuoteStringBashParsingFlaws(false)
+          duplicateDollarSingleQuoteStringBashParsingFlaws(false),
+          allowDollarDoubleQuoteStrings(true),
+          secureDollarDoubleQuoteStrings(true)
     {
     }
 
 public:
+    /** bash compatible; includes duplicating bash bugs except for security flaws */
+    constexpr static ParserDialect getSecureBashDialect() noexcept
+    {
+        return ParserDialect(SecureBashDialectTag{});
+    }
     /** bash compatible; includes duplicating bash bugs */
     constexpr static ParserDialect getBashDialect() noexcept
     {
@@ -677,6 +701,109 @@ private:
         }
         return parserSuccess(retval);
     }
+    ParseResult<std::vector<util::ArenaPtr<ast::WordPart>>> parseDoubleQuoteString(
+        input::LineContinuationRemovingIterator &textIter,
+        std::vector<util::ArenaPtr<ast::WordPart>> wordParts,
+        bool isInsideBackquotes)
+    {
+        typedef ast::TextWordPart<ast::WordPart::QuoteKind::DoubleQuote> TextWordPartType;
+        typedef ast::SimpleEscapeSequenceWordPart<ast::WordPart::QuoteKind::DoubleQuote>
+            SimpleEscapeSequenceWordPartType;
+        assert(*textIter == '\"');
+        auto quoteStartingLocation = textIter.getLocation();
+        ++textIter;
+        wordParts.push_back(
+            arena.allocate<ast::QuoteWordPart<true, ast::WordPart::QuoteKind::DoubleQuote>>(
+                input::LocationSpan(quoteStartingLocation, textIter.getLocation())));
+        auto quotedTextStartLocation = textIter.getLocation();
+        while(true)
+        {
+            switch(*textIter)
+            {
+            case input::eof:
+                return parserErrorStaticString("missing closing \"", quotedTextStartLocation);
+            case '\"':
+            {
+                quoteStartingLocation = textIter.getLocation();
+                ++textIter;
+                wordParts.push_back(
+                    arena
+                        .allocate<ast::QuoteWordPart<false, ast::WordPart::QuoteKind::DoubleQuote>>(
+                            input::LocationSpan(quoteStartingLocation, textIter.getLocation())));
+                return parserSuccess(std::move(wordParts));
+            }
+            case '$':
+            {
+                UNIMPLEMENTED();
+                break;
+            }
+            case '`':
+            {
+                if(isInsideBackquotes)
+                    return parserErrorStaticString("missing closing \"", textIter.getLocation());
+                UNIMPLEMENTED();
+                break;
+            }
+            case '\\':
+            {
+                auto backslashStartLocation = textIter.getLocation();
+                auto baseTextIter = textIter.getBaseIterator();
+                ++baseTextIter;
+                switch(*baseTextIter)
+                {
+                case '$':
+                case '`':
+                case '\\':
+                case '\"':
+                {
+                    // newline already taken care of by LineContinuationRemovingIterator
+                    char ch = *baseTextIter;
+                    ++baseTextIter;
+                    auto locationSpan =
+                        input::LocationSpan(backslashStartLocation, baseTextIter.getLocation());
+                    wordParts.push_back(
+                        arena.allocate<SimpleEscapeSequenceWordPartType>(locationSpan, ch));
+                    break;
+                }
+                default:
+                {
+                    ++baseTextIter;
+                    auto locationSpan =
+                        input::LocationSpan(backslashStartLocation, baseTextIter.getLocation());
+                    wordParts.push_back(arena.allocate<TextWordPartType>(locationSpan));
+                    break;
+                }
+                }
+                textIter = input::LineContinuationRemovingIterator(baseTextIter);
+                break;
+            }
+            default:
+            {
+                auto textStartLocation = textIter.getLocation();
+                ++textIter;
+                while(true)
+                {
+                    switch(*textIter)
+                    {
+                    case input::eof:
+                    case '$':
+                    case '`':
+                    case '\\':
+                    case '\"':
+                        break;
+                    default:
+                        ++textIter;
+                        continue;
+                    }
+                    break;
+                }
+                auto locationSpan = input::LocationSpan(textStartLocation, textIter.getLocation());
+                wordParts.push_back(arena.allocate<TextWordPartType>(locationSpan));
+                break;
+            }
+            }
+        }
+    }
     ParseResult<std::vector<util::ArenaPtr<ast::WordPart>>> parseDollarSingleQuoteString(
         input::LineContinuationRemovingIterator &textIter,
         std::vector<util::ArenaPtr<ast::WordPart>> wordParts,
@@ -1071,23 +1198,18 @@ private:
             else if(*textIter == '\\')
             {
                 auto escapeStartLocation = textIter.getLocation();
-                auto escapeStartTextIter = textIter;
-                ++textIter;
-                if(*textIter != input::eof)
-                {
-                    char value = *textIter;
-                    ++textIter;
-                    wordParts.push_back(
-                        arena.allocate<ast::SimpleEscapeSequenceWordPart<ast::WordPart::QuoteKind::
-                                                                             Unquoted>>(
-                            input::LocationSpan(escapeStartLocation, textIter.getLocation()),
-                            value));
-                }
-                else
-                {
-                    textIter = escapeStartTextIter;
+                auto baseTextIter = textIter.getBaseIterator();
+                ++baseTextIter;
+                if(*baseTextIter == input::eof)
                     break;
-                }
+                char value = *baseTextIter;
+                ++baseTextIter;
+                wordParts.push_back(
+                    arena.allocate<ast::SimpleEscapeSequenceWordPart<ast::WordPart::QuoteKind::
+                                                                         Unquoted>>(
+                        input::LocationSpan(escapeStartLocation, baseTextIter.getLocation()),
+                        value));
+                textIter = input::LineContinuationRemovingIterator(baseTextIter);
             }
             else if(*textIter == '\'')
             {
@@ -1117,6 +1239,14 @@ private:
                         .allocate<ast::QuoteWordPart<false, ast::WordPart::QuoteKind::SingleQuote>>(
                             input::LocationSpan(closingQuoteStartLocation,
                                                 textIter.getLocation())));
+            }
+            else if(*textIter == '\"')
+            {
+                auto result =
+                    parseDoubleQuoteString(textIter, std::move(wordParts), isInsideBackquotes);
+                if(!result)
+                    return result.getError();
+                wordParts = std::move(result.get());
             }
             else if(*textIter == '$')
             {
@@ -1159,139 +1289,6 @@ private:
         return parserSuccess(arena.allocate<ast::Word>(
             input::LocationSpan(wordStartLocation, textIter.getLocation()), std::move(wordParts)));
     }
-#if 0
-    void parseNextToken(TokenizerMode mode, bool outputAndSkipComments = true)
-    {
-        for(;;)
-        {
-            discardRewindBuffer();
-            peekChar(); // to set location
-            isInitialToken = false;
-            tokenLocation = charLocation;
-            tokenType = TokenType::EndOfFile;
-            tokenValue.clear();
-            if(peekChar() == TextInput::eof)
-            {
-                tokenType = TokenType::EndOfFile;
-                getChar();
-            }
-            else if(isNewline(peekChar()))
-            {
-                tokenType = TokenType::Newline;
-                getAndAddChar();
-            }
-            else
-            {
-                switch(mode)
-                {
-                case TokenizerMode::Command:
-                case TokenizerMode::CommandWithNames:
-                    switch(peekChar())
-                    {
-                    case '#':
-                        tokenType = TokenType::Comment;
-                        getAndAddChar();
-                        while(!isNewlineOrEOF(peekChar()))
-                        {
-                            getAndAddChar();
-                        }
-                        break;
-                    case '(':
-                        tokenType = TokenType::LParen;
-                        getAndAddChar();
-                        if(peekChar() == '(')
-                        {
-                            tokenType = TokenType::DoubleLParen;
-                            getAndAddChar();
-                        }
-                        break;
-                    case ')':
-                        tokenType = TokenType::RParen;
-                        getAndAddChar();
-                        if(peekChar() == ')')
-                        {
-                            tokenType = TokenType::DoubleRParen;
-                            getAndAddChar();
-                        }
-                        break;
-                    case '=':
-                        tokenType = TokenType::Equal;
-                        getAndAddChar();
-                        break;
-                    case ';':
-                        tokenType = TokenType::Semicolon;
-                        getAndAddChar();
-                        break;
-                    case '`':
-                        tokenType = TokenType::Backtick;
-                        getAndAddChar();
-                        break;
-                    default:
-                        if(isBlank(peekChar()))
-                        {
-                            tokenType = TokenType::Blanks;
-                            do
-                            {
-                                getAndAddChar();
-                            } while(isBlank(peekChar()));
-                        }
-                        else if(isWordStartCharacter(peekChar()))
-                        {
-                            tokenType = TokenType::UnquotedWordPart;
-                            if(mode == TokenizerMode::CommandWithNames
-                               && isNameStartCharacter(peekChar()))
-                                tokenType = TokenType::Name;
-                            do
-                            {
-                                if(tokenType == TokenType::Name)
-                                {
-                                    if(peekChar() == '[' || peekChar() == '=')
-                                        break;
-                                    if(!isNameContinueCharacter(peekChar()))
-                                        tokenType = TokenType::UnquotedWordPart;
-                                }
-                                getAndAddChar();
-                            } while(isWordContinueCharacter(peekChar()));
-                        }
-                        else
-                        {
-                            UNIMPLEMENTED();
-                        }
-                    }
-                    break;
-                case TokenizerMode::DoubleQuotes:
-                    UNIMPLEMENTED();
-                    break;
-                case TokenizerMode::VariableSubstitution:
-                    UNIMPLEMENTED();
-                    break;
-                case TokenizerMode::Arithmetic:
-                    UNIMPLEMENTED();
-                    break;
-                case TokenizerMode::Condition:
-                    UNIMPLEMENTED();
-                    break;
-                case TokenizerMode::RegEx:
-                    UNIMPLEMENTED();
-                    break;
-                case TokenizerMode::RegExCharacterClass:
-                    UNIMPLEMENTED();
-                    break;
-                }
-            }
-            if(debugOutput)
-            {
-                *debugOutput << getTokenDebugString() << std::endl;
-            }
-            if(outputAndSkipComments && tokenType == TokenType::Comment)
-            {
-                outputToken();
-                continue;
-            }
-            break;
-        }
-    }
-#endif
 #warning finish
 public:
     void test();
