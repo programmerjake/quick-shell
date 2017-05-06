@@ -70,6 +70,8 @@ struct ParserDialect final
     bool duplicateDollarSingleQuoteStringBashParsingFlaws;
     bool allowDollarDoubleQuoteStrings;
     bool secureDollarDoubleQuoteStrings;
+    bool backquoteCanEndComment;
+#error finish
     constexpr ParserDialect() noexcept : ParserDialect(QuickShellDialectTag{})
     {
     }
@@ -1288,6 +1290,14 @@ private:
         }
         return parserSuccess(arena.allocate<ast::Word>(
             input::LocationSpan(wordStartLocation, textIter.getLocation()), std::move(wordParts)));
+    }
+    ParseResult<util::ArenaPtr<ast::Word>> parseComment(
+        input::LineContinuationRemovingIterator &textIter, bool isInsideBackquotes)
+    {
+        auto commentStartLocation = textIter.getLocation();
+        if(*textIter != '#')
+            return parserErrorStaticString("missing comment", textIter);
+        auto baseTextIter =
     }
 #warning finish
 public:
