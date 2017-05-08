@@ -25,9 +25,9 @@ namespace ast
 struct Comment final : public ASTBase<Comment>
 {
     using ASTBase<Comment>::ASTBase;
-    virtual util::ArenaPtr<BlankOrEmpty> duplicate(util::Arena &arena) const override
+    virtual util::ArenaPtr<Comment> duplicate(util::Arena &arena) const override
     {
-        return arena.allocate<BlankOrEmpty>(*this);
+        return arena.allocate<Comment>(*this);
     }
     virtual void dump(std::ostream &os, ASTDumpState &dumpState) const override;
 };

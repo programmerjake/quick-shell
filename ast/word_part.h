@@ -530,6 +530,50 @@ struct UnicodeEscapeSequenceWordPart final : public GenericUnicodeEscapeSequence
            << "): " << ASTDumpState::escapedQuotedString(getRawSourceText()) << std::endl;
     }
 };
+
+struct GenericCommandSubstitution : public WordPart
+{
+#warning finish
+    using WordPart::WordPart;
+    enum class CommandSubstitutionKind
+    {
+        Backquote,
+        DollarParenthesis,
+    };
+    static util::string_view getCommandSubstitutionKindString(CommandSubstitutionKind kind) noexcept
+    {
+        switch(kind)
+        {
+        case CommandSubstitutionKind::Backquote:
+            return "Backquote";
+        case CommandSubstitutionKind::DollarParenthesis:
+            return "DollarParenthesis";
+        }
+        UNREACHABLE();
+        return "";
+    }
+    virtual CommandSubstitutionKind getCommandSubstitutionKind() const noexcept = 0;
+    virtual QuotePart getQuotePart() const noexcept override final
+    {
+        return QuotePart::Other;
+    }
+};
+
+template <WordPart::QuoteKind quoteKind,
+          GenericCommandSubstitution::CommandSubstitutionKind commandSubstitutionKind>
+struct CommandSubstitution final : public GenericCommandSubstitution
+{
+#warning finish
+    using GenericCommandSubstitution::GenericCommandSubstitution;
+    virtual CommandSubstitutionKind getCommandSubstitutionKind() const noexcept override
+    {
+        return commandSubstitutionKind;
+    }
+    virtual QuoteKind getQuoteKind() const noexcept override
+    {
+        return quoteKind;
+    }
+};
 }
 }
 

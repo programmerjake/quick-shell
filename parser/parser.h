@@ -31,6 +31,7 @@
 #include "../ast/blank.h"
 #include "../ast/word.h"
 #include "../ast/word_part.h"
+#include "../ast/comment.h"
 #include "../util/arena.h"
 #include "../util/unicode.h"
 
@@ -70,8 +71,7 @@ struct ParserDialect final
     bool duplicateDollarSingleQuoteStringBashParsingFlaws;
     bool allowDollarDoubleQuoteStrings;
     bool secureDollarDoubleQuoteStrings;
-    bool backquoteCanEndComment;
-#error finish
+    bool errorOnBackquoteEndingComment;
     constexpr ParserDialect() noexcept : ParserDialect(QuickShellDialectTag{})
     {
     }
@@ -94,7 +94,8 @@ private:
           allowDollarSingleQuoteStrings(true),
           duplicateDollarSingleQuoteStringBashParsingFlaws(true),
           allowDollarDoubleQuoteStrings(true),
-          secureDollarDoubleQuoteStrings(true)
+          secureDollarDoubleQuoteStrings(true),
+          errorOnBackquoteEndingComment(false)
     {
     }
     constexpr explicit ParserDialect(BashDialectTag) noexcept
@@ -102,7 +103,8 @@ private:
           allowDollarSingleQuoteStrings(true),
           duplicateDollarSingleQuoteStringBashParsingFlaws(true),
           allowDollarDoubleQuoteStrings(true),
-          secureDollarDoubleQuoteStrings(false)
+          secureDollarDoubleQuoteStrings(false),
+          errorOnBackquoteEndingComment(false)
     {
     }
     constexpr explicit ParserDialect(PosixDialectTag) noexcept
@@ -110,7 +112,8 @@ private:
           allowDollarSingleQuoteStrings(false),
           duplicateDollarSingleQuoteStringBashParsingFlaws(false),
           allowDollarDoubleQuoteStrings(false),
-          secureDollarDoubleQuoteStrings(true)
+          secureDollarDoubleQuoteStrings(true),
+          errorOnBackquoteEndingComment(true)
     {
     }
     constexpr explicit ParserDialect(QuickShellDialectTag) noexcept
@@ -118,7 +121,8 @@ private:
           allowDollarSingleQuoteStrings(true),
           duplicateDollarSingleQuoteStringBashParsingFlaws(false),
           allowDollarDoubleQuoteStrings(true),
-          secureDollarDoubleQuoteStrings(true)
+          secureDollarDoubleQuoteStrings(true),
+          errorOnBackquoteEndingComment(true)
     {
     }
 
@@ -573,8 +577,10 @@ private:
         return parserErrorStaticString("missing unquoted word continue character", textIter);
     }
     ParseResult<> parseWordStartCharacter(input::LineContinuationRemovingIterator &textIter,
-                                          bool isInsideBackquotes)
+                                          std::size_t backquoteNestLevel)
     {
+        if(backquoteNestLevel > 0)
+            UNIMPLEMENTED();
         switch(*textIter)
         {
         case '\"':
@@ -585,7 +591,7 @@ private:
             ++textIter;
             return parserSuccess();
         case '`':
-            if(isInsideBackquotes)
+            if(backquoteNestLevel > 0)
                 break;
             ++textIter;
             return parserSuccess();
@@ -604,12 +610,14 @@ private:
         return parserErrorStaticString("missing word start character", textIter);
     }
     ParseResult<> parseUnquotedWordEndCharacter(input::LineContinuationRemovingIterator &textIter,
-                                                bool isInsideBackquotes)
+                                                std::size_t backquoteNestLevel)
     {
+        if(backquoteNestLevel > 0)
+            UNIMPLEMENTED();
         switch(*textIter)
         {
         case '`':
-            if(isInsideBackquotes)
+            if(backquoteNestLevel > 0)
             {
                 ++textIter;
                 return parserSuccess();
@@ -706,8 +714,10 @@ private:
     ParseResult<std::vector<util::ArenaPtr<ast::WordPart>>> parseDoubleQuoteString(
         input::LineContinuationRemovingIterator &textIter,
         std::vector<util::ArenaPtr<ast::WordPart>> wordParts,
-        bool isInsideBackquotes)
+        std::size_t backquoteNestLevel)
     {
+        if(backquoteNestLevel > 0)
+            UNIMPLEMENTED();
         typedef ast::TextWordPart<ast::WordPart::QuoteKind::DoubleQuote> TextWordPartType;
         typedef ast::SimpleEscapeSequenceWordPart<ast::WordPart::QuoteKind::DoubleQuote>
             SimpleEscapeSequenceWordPartType;
@@ -741,7 +751,7 @@ private:
             }
             case '`':
             {
-                if(isInsideBackquotes)
+                if(backquoteNestLevel > 0)
                     return parserErrorStaticString("missing closing \"", textIter.getLocation());
                 UNIMPLEMENTED();
                 break;
@@ -809,8 +819,11 @@ private:
     ParseResult<std::vector<util::ArenaPtr<ast::WordPart>>> parseDollarSingleQuoteString(
         input::LineContinuationRemovingIterator &textIter,
         std::vector<util::ArenaPtr<ast::WordPart>> wordParts,
-        input::Location dollarSignLocation)
+        input::Location dollarSignLocation,
+        std::size_t backquoteNestLevel)
     {
+        if(backquoteNestLevel > 0)
+            UNIMPLEMENTED();
         typedef ast::TextWordPart<ast::WordPart::QuoteKind::EscapeInterpretingSingleQuote>
             TextWordPartType;
         typedef ast::
@@ -1126,15 +1139,17 @@ private:
     }
     ParseResult<util::ArenaPtr<ast::Word>> parseWord(
         input::LineContinuationRemovingIterator &textIter,
-        bool isInsideBackquotes,
+        std::size_t backquoteNestLevel,
         bool checkForVariableAssignment,
         bool checkForReservedWords)
     {
+        if(backquoteNestLevel > 0)
+            UNIMPLEMENTED();
         auto wordStartLocation = textIter.getLocation();
-        if(!parseWordStartCharacter(copy(textIter), isInsideBackquotes))
+        if(!parseWordStartCharacter(copy(textIter), backquoteNestLevel))
             return parserErrorStaticString("missing word", textIter);
         std::vector<util::ArenaPtr<ast::WordPart>> wordParts;
-        while(!parseUnquotedWordEndCharacter(copy(textIter), isInsideBackquotes))
+        while(!parseUnquotedWordEndCharacter(copy(textIter), backquoteNestLevel))
         {
             if(parseSimpleWordStartCharacter(copy(textIter)))
             {
@@ -1245,7 +1260,7 @@ private:
             else if(*textIter == '\"')
             {
                 auto result =
-                    parseDoubleQuoteString(textIter, std::move(wordParts), isInsideBackquotes);
+                    parseDoubleQuoteString(textIter, std::move(wordParts), backquoteNestLevel);
                 if(!result)
                     return result.getError();
                 wordParts = std::move(result.get());
@@ -1257,7 +1272,7 @@ private:
                 if(dialect.allowDollarSingleQuoteStrings && *textIter == '\'')
                 {
                     auto result = parseDollarSingleQuoteString(
-                        textIter, std::move(wordParts), dollarSignLocation);
+                        textIter, std::move(wordParts), dollarSignLocation, backquoteNestLevel);
                     if(!result)
                         return result.getError();
                     wordParts = std::move(result.get());
@@ -1291,13 +1306,33 @@ private:
         return parserSuccess(arena.allocate<ast::Word>(
             input::LocationSpan(wordStartLocation, textIter.getLocation()), std::move(wordParts)));
     }
-    ParseResult<util::ArenaPtr<ast::Word>> parseComment(
-        input::LineContinuationRemovingIterator &textIter, bool isInsideBackquotes)
+    ParseResult<util::ArenaPtr<ast::Comment>> parseComment(
+        input::LineContinuationRemovingIterator &textIter, std::size_t backquoteNestLevel)
     {
+        if(backquoteNestLevel > 0)
+            UNIMPLEMENTED();
         auto commentStartLocation = textIter.getLocation();
         if(*textIter != '#')
             return parserErrorStaticString("missing comment", textIter);
-        auto baseTextIter =
+        auto baseTextIter = textIter.getBaseIterator();
+        for(;;)
+        {
+            if(backquoteNestLevel > 0 && *baseTextIter == '`')
+            {
+                if(dialect.errorOnBackquoteEndingComment)
+                {
+                    textIter = input::LineContinuationRemovingIterator(baseTextIter);
+                    return parserErrorStaticString("comment ended by backquote", textIter);
+                }
+                break;
+            }
+            if(*baseTextIter == input::eof || parseNewLine(copy(baseTextIter)))
+                break;
+            ++baseTextIter;
+        }
+        textIter = input::LineContinuationRemovingIterator(baseTextIter);
+        return parserSuccess(arena.allocate<ast::Comment>(
+            input::LocationSpan(commentStartLocation, textIter.getLocation())));
     }
 #warning finish
 public:
