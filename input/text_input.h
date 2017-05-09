@@ -582,6 +582,58 @@ public:
     }
 };
 
+class UnescapingIterator final
+{
+public:
+    static constexpr char escapeCharacter = '\\';
+    struct Value final
+    {
+        int ch;
+        std::size_t escapeLevel;
+        constexpr Value() noexcept : ch(eof), escapeLevel(0)
+        {
+        }
+        constexpr Value(int ch, std::size_t escapeLevel) noexcept : ch(ch), escapeLevel(escapeLevel)
+        {
+        }
+    };
+
+private:
+    static Value parseHelper(TextInput::Iterator &iter, std::size_t maxEscapeLevel)
+    {
+    	if(maxEscapeLevel > 0)
+    		return parse(iter, maxEscapeLevel - 1);
+    	return Value(*iter++, 0);
+    }
+
+public:
+    static Value parse(TextInput::Iterator &iter, std::size_t maxEscapeLevel)
+    {
+        switch(*iter)
+        {
+        case '\\':
+        {
+            auto iter2 = iter;
+            auto firstValue = parseHelper(iter2, maxEscapeLevel);
+            if(firstValue.ch == '\\')
+#error finish
+        }
+        }
+    }
+
+public:
+    typedef std::ptrdiff_t difference_type;
+    typedef Value value_type;
+    typedef const Value *pointer;
+    typedef const Value &reference;
+    typedef std::input_iterator_tag iterator_category;
+
+private:
+    mutable TextInput::Iterator iter;
+    mutable Value value;
+    mutable bool valueIsValid;
+};
+
 class LineContinuationRemovingIterator final
 {
 public:

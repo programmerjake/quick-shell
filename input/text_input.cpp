@@ -118,5 +118,7 @@ void TextInput::updateLineStartIndexes()
         validLineStartIndexesIndex = validMemorySize;
     }
 }
+
+constexpr char UnescapingIterator::escapeCharacter;
 }
 }
