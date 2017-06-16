@@ -381,6 +381,20 @@ public:
     {
         return std::basic_string<CharType, TraitsType, Allocator>(stringPointer, stringSize);
     }
+    template <typename Allocator>
+    friend std::basic_string<CharType, TraitsType, Allocator> &operator+=(
+        std::basic_string<CharType, TraitsType, Allocator> &l, basic_string_view r)
+    {
+        l.append(r.data(), r.size());
+        return l;
+    }
+    template <typename Allocator>
+    friend std::basic_string<CharType, TraitsType, Allocator> &operator+=(
+        std::basic_string<CharType, TraitsType, Allocator> &&l, basic_string_view r)
+    {
+        l.append(r.data(), r.size());
+        return l;
+    }
 };
 
 template <typename CharType, typename TraitsType>
